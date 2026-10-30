@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 320x180 leanback banner: dark card with a play mark. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:fillColor="#FF0B0B10" android:pathData="M0,0h320v180h-320z" />
+    <path android:fillColor="#FFFF5A36" android:pathData="M48,90m-30,0a30,30 0,1 1,60 0a30,30 0,1 1,-60 0" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M40,74L64,90L40,106Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M100,78h120v10h-120z" />
+    <path android:fillColor="#99FFFFFF" android:pathData="M100,96h80v6h-80z" />
+</vector>

@@ -1,0 +1,52 @@
+package dev.bettercoool.tv
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import dev.bettercoool.tv.data.Channel
+import dev.bettercoool.tv.ui.home.HomeScreen
+import dev.bettercoool.tv.ui.pairing.PairingScreen
+import dev.bettercoool.tv.ui.player.PlayerScreen
+import dev.bettercoool.tv.ui.theme.Palette
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val graph = (application as CooolApp).graph
+        setContent { AppRoot(graph) }
+    }
+}
+
+private sealed interface Screen {
+    data object Pairing : Screen
+    data object Home : Screen
+    data class Player(val channels: List<Channel>, val index: Int) : Screen
+}
+
+/** No navigation library: three screens and a back stack of one don't need it. */
+@Composable
+private fun AppRoot(graph: AppGraph) {
+    var screen by remember { mutableStateOf<Screen>(if (graph.session.isPaired) Screen.Home else Screen.Pairing) }
+
+    LaunchedEffect(Unit) {
+        graph.session.loggedOut.collect { screen = Screen.Pairing }
+    }
+
+    Box(Modifier.fillMaxSize().background(Palette.Background)) {
+        when (val s = screen) {
+            Screen.Pairing -> PairingScreen(graph, onPaired = { screen = Screen.Home })
+            Screen.Home -> HomeScreen(graph, onPlay = { channels, index -> screen = Screen.Player(channels, index) })
+            is Screen.Player -> PlayerScreen(graph, s.channels, s.index, onExit = { screen = Screen.Home })
+        }
+    }
+}

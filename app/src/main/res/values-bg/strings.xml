@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pair_title">Свържете този телевизор</string>
+    <string name="pair_step1">Отворете %1$s на телефона или компютъра си или сканирайте QR кода</string>
+    <string name="pair_step2">Влезте в My Cooolbox и изберете „Добави устройство“</string>
+    <string name="pair_step3">Въведете този код</string>
+    <string name="pair_expires">Нов код след %1$s</string>
+    <string name="pair_loading">Получаване на код…</string>
+    <string name="pair_connecting">Свързване…</string>
+    <string name="pair_error">Няма връзка с Coool TV. Нов опит…</string>
+
+    <string name="home_loading">Зареждане на каналите…</string>
+    <string name="home_error">Каналите не могат да бъдат заредени</string>
+    <string name="home_retry">Опитай пак</string>
+    <string name="home_channels">%1$d канала</string>
+    <string name="not_in_plan">Не е включен в плана</string>
+    <string name="locked">Заключен</string>
+
+    <string name="player_error">Грешка при възпроизвеждане</string>
+</resources>

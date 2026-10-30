@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Coool TV Lite</string>
+
+    <string name="pair_title">Connect this TV</string>
+    <string name="pair_step1">Open %1$s on your phone or computer, or scan the QR code</string>
+    <string name="pair_step2">Log in to My Cooolbox and choose “Add device”</string>
+    <string name="pair_step3">Enter this code</string>
+    <string name="pair_expires">New code in %1$s</string>
+    <string name="pair_loading">Getting a code…</string>
+    <string name="pair_connecting">Connecting…</string>
+    <string name="pair_error">Can’t reach Coool TV. Retrying…</string>
+
+    <string name="home_loading">Loading channels…</string>
+    <string name="home_error">Couldn’t load channels</string>
+    <string name="home_retry">Retry</string>
+    <string name="home_channels">%1$d channels</string>
+    <string name="not_in_plan">Not in your plan</string>
+    <string name="locked">Locked</string>
+
+    <string name="player_error">Playback failed</string>
+</resources>
