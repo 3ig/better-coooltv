@@ -46,7 +46,11 @@ Milestones 1–2 done, plus a first cut of 3 and 4: pairing against production w
 
 Done since: number-key zapping (home + player), category filters + 4K badges, what's-on line per channel, now/next (home preview + player banner), EPG 6 h rolling window with disk cache keyed on cache-version, Main10 capability check, error card with server messages (sessions limit, inactive service).
 
-Next: full EPG grid (custom-drawn), catch-up/timeshift playback, PIN entry for protected profiles, device SSE events (`epg_updated`, `channel_*`, `device_deleted`), release build with R8 + Baseline Profile and cold-start measurement.
+Then: full guide grid (one focus node + one Canvas; opens from home or as an overlay over playing video), catch-up from the guide (`timeshift_abs`), pause live TV and resume from the archive, ∓30 s seek, PIN pad for protected profiles, device SSE events (confirmed format: named `event:` + JSON `data:`, `: ping` comments), EPG reworked into 3 h on-demand blocks cached on disk.
+
+Release build (R8, debug-signed for now) on the Philips TV: **1.9 MB APK** (original 36 MB), **~0.3 s cold start**, **~70 MB PSS** during HD playback.
+
+Next: real release signing; channel preview thumbnails (`dirname(stream)/YYYY/MM/DD/HH/mm/ss.jpg`); favourites; audio/subtitle track selection; resume position for catch-up; idle-timeout prompt; settings (language, clear cache, log out).
 
 ## Open questions (answered — see re/live_api_notes.md)
 - `startTime`/`endTime` format, channel `id` type, whether logo URLs are absolute.

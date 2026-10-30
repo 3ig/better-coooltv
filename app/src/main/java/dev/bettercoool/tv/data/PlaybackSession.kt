@@ -19,9 +19,19 @@ class PlaybackSession(
     private var uuid: String? = null
     private var lastTouch = 0L
 
-    suspend fun streamUrl(channel: Channel): String {
+    /**
+     * Live: `<stream>?token=…`. Catch-up from [fromMs]: `<streamTimeshift>/timeshift_abs-<unixSec>.m3u8?token=…`,
+     * which plays from that moment onward toward live.
+     */
+    suspend fun streamUrl(channel: Channel, fromMs: Long? = null): String {
         val id = mutex.withLock { uuid ?: api.createSession(device).uuid.also { uuid = it; lastTouch = now() } }
-        return "${channel.stream}?token=${now()}:$id"
+        val token = "token=${now()}:$id"
+        val timeshift = channel.streamTimeshift
+        return if (fromMs != null && channel.hasTimeshift && timeshift != null) {
+            "$timeshift/timeshift_abs-${fromMs / 1000}.m3u8?$token"
+        } else {
+            "${channel.stream}?$token"
+        }
     }
 
     /** Heartbeat every 15 s; last-active at most every 5 min. Run while the player is visible. */

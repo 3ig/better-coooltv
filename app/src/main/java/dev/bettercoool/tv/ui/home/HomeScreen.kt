@@ -66,14 +66,21 @@ import kotlinx.coroutines.launch
 private const val FILTER_UHD = "__uhd"
 
 @Composable
-fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit) {
+fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit, onGuide: (List<Channel>, Int) -> Unit) {
     var snapshot by remember { mutableStateOf(graph.catalog.snapshot) }
     var failed by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(attempt) {
-        if (snapshot != null) return@LaunchedEffect
+    // Server pushes (channel/profile changes) invalidate the catalog and bump its revision.
+    val catalogRevision by graph.catalog.revision.collectAsState()
+    var pinFor by remember { mutableStateOf<Profile?>(null) }
+
+    LaunchedEffect(attempt, catalogRevision) {
+        graph.catalog.snapshot?.let {
+            snapshot = it
+            return@LaunchedEffect
+        }
         failed = false
         try {
             snapshot = graph.catalog.load()
@@ -92,20 +99,37 @@ fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit) {
         }
     }
 
-    val selectProfile: (Profile) -> Unit = { profile ->
-        if (!profile.isLocked) scope.launch {
+    val openProfile: (Profile) -> Unit = { profile ->
+        scope.launch {
             snapshot = null
             snapshot = runCatching { graph.catalog.selectProfile(profile) }.getOrNull()
             failed = snapshot == null
         }
     }
+    val selectProfile: (Profile) -> Unit = { profile ->
+        if (profile.uuid == snapshot?.profile?.uuid) Unit
+        else if (profile.isLocked) pinFor = profile
+        else openProfile(profile)
+    }
 
     val s = snapshot
-    when {
-        failed -> Message(stringResource(R.string.home_error), action = stringResource(R.string.home_retry)) { attempt++ }
-        s == null -> Message(stringResource(R.string.home_loading))
-        s.profile == null -> ProfilePicker(s.profiles, selectProfile)
-        else -> ChannelBrowser(graph, s, selectProfile, onPlay)
+    Box(Modifier.fillMaxSize()) {
+        when {
+            failed -> Message(stringResource(R.string.home_error), action = stringResource(R.string.home_retry)) { attempt++ }
+            s == null -> Message(stringResource(R.string.home_loading))
+            s.profile == null -> ProfilePicker(s.profiles, selectProfile)
+            else -> ChannelBrowser(graph, s, selectProfile, onPlay, onGuide)
+        }
+        pinFor?.let { p ->
+            PinDialog(
+                profile = p,
+                onSuccess = {
+                    pinFor = null
+                    openProfile(p)
+                },
+                onCancel = { pinFor = null },
+            )
+        }
     }
 }
 
@@ -115,6 +139,7 @@ private fun ChannelBrowser(
     snapshot: Catalog.Snapshot,
     onProfile: (Profile) -> Unit,
     onPlay: (List<Channel>, Int) -> Unit,
+    onGuide: (List<Channel>, Int) -> Unit,
 ) {
     val profile = snapshot.profile!!
     val all = snapshot.channels
@@ -173,18 +198,25 @@ private fun ChannelBrowser(
 
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
-            val d = digitFor(e.nativeKeyEvent.keyCode)
-            if (d != null && e.type == KeyEventType.KeyDown) {
-                if (digits.length < 4) digits += d
-                true
-            } else {
-                false
+            val code = e.nativeKeyEvent.keyCode
+            val d = digitFor(code)
+            when {
+                e.type != KeyEventType.KeyDown -> false
+                d != null -> {
+                    if (digits.length < 4) digits += d
+                    true
+                }
+                code == android.view.KeyEvent.KEYCODE_GUIDE || code == android.view.KeyEvent.KEYCODE_MENU -> {
+                    onGuide(visible, focusedIndex.coerceIn(0, (visible.size - 1).coerceAtLeast(0)))
+                    true
+                }
+                else -> false
             }
         },
     ) {
         Row(Modifier.fillMaxSize().padding(start = 48.dp, top = 32.dp, end = 48.dp)) {
             Column(Modifier.width(440.dp).fillMaxHeight()) {
-                Header(snapshot, onProfile)
+                Header(snapshot, onProfile, onGuide = { onGuide(visible, focusedIndex.coerceIn(0, (visible.size - 1).coerceAtLeast(0))) })
                 Spacer(Modifier.height(14.dp))
                 FilterRow(filters, filter) {
                     filter = it
@@ -227,13 +259,15 @@ private fun ChannelBrowser(
 }
 
 @Composable
-private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit) {
+private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit, onGuide: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Txt(stringResource(R.string.app_name).uppercase(), Type.Label, color = Palette.Accent)
             Spacer(Modifier.height(2.dp))
             Txt(stringResource(R.string.home_channels, snapshot.channels.size), Type.Label)
         }
+        Chip(stringResource(R.string.guide), selected = false, onClick = onGuide)
+        Spacer(Modifier.width(6.dp))
         if (snapshot.profiles.size > 1) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 items(snapshot.profiles, key = { it.uuid }) { p ->

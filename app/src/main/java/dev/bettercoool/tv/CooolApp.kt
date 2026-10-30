@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import dev.bettercoool.tv.data.Catalog
 import dev.bettercoool.tv.data.CooolApi
+import dev.bettercoool.tv.data.DeviceEvents
 import dev.bettercoool.tv.data.DeviceInfo
 import dev.bettercoool.tv.data.EpgStore
 import dev.bettercoool.tv.data.SessionStore
@@ -29,4 +30,5 @@ class AppGraph(context: Context) {
     val api = CooolApi(session)
     val catalog = Catalog(api, session)
     val epg = EpgStore(api, context.cacheDir)
+    val events = DeviceEvents(api, session, catalog, epg, appScope)
 }

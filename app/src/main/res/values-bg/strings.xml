@@ -38,4 +38,15 @@
     <string name="err_playback">Каналът не може да бъде възпроизведен.</string>
     <string name="err_uhd">Този канал е 4K (HEVC 10-bit) и телевизорът не може да го декодира.</string>
     <string name="press_ok_retry">Натиснете OK за нов опит</string>
+    <string name="guide">Програма</string>
+    <string name="guide_watch">OK · Гледай</string>
+    <string name="guide_watch_start">OK · Гледай от началото</string>
+    <string name="guide_no_catchup">Не е налично за повторно гледане</string>
+    <string name="guide_starts">Започва в %1$s</string>
+    <string name="today">Днес</string>
+    <string name="catchup">Повторно</string>
+    <string name="paused">Пауза</string>
+    <string name="live">На живо</string>
+    <string name="pin_title">ПИН за %1$s</string>
+    <string name="pin_wrong">Грешен ПИН</string>
 </resources>

@@ -11,27 +11,33 @@ import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import java.io.File
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 
 /**
- * Programme guide kept as a small rolling window (1 h back, 5 h ahead) instead of the original's
- * ±7 days for every channel (6 h ≈ 600 KB of JSON, so a week would be tens of MB on the JS thread).
- * The raw response is cached on disk and reused while the server's cache-version is unchanged.
+ * Programme guide loaded in 3-hour blocks (UTC-aligned), on demand. A block for all channels is
+ * ~300 KB of JSON; the original app pulled up to ±7 days at once and held it on the JS thread.
+ *
+ * Blocks are cached on disk under the server's EPG cache-version and dropped when it changes.
+ * At most [MAX_BLOCKS] blocks stay in memory (the ones nearest to now win).
  */
 class EpgStore(private val api: CooolApi, cacheDir: File) {
 
-    private val file = File(cacheDir, "epg.json")
-    private val meta = File(cacheDir, "epg.meta") // "<version> <fromMs> <toMs>"
+    private val dir = File(cacheDir, "epg").apply { mkdirs() }
+    private val versionFile = File(dir, "version")
     private val mutex = Mutex()
 
-    @Volatile private var byChannel: Map<String, List<EpgEntry>> = emptyMap()
-    @Volatile private var windowEnd = 0L
+    private val blocks = HashMap<Long, Map<String, List<EpgEntry>>>()
+    @Volatile private var merged: Map<String, List<EpgEntry>> = emptyMap()
+    private var version: Int? = runCatching { versionFile.readText().trim().toInt() }.getOrNull()
+    private var versionCheckedAt = 0L
 
     private val _revision = MutableStateFlow(0)
-    /** Bumps whenever new guide data is available; collect to recompose. */
+    /** Bumps whenever guide data changes; collect it to recompose. */
     val revision: StateFlow<Int> = _revision
 
-    fun programmes(channelId: String): List<EpgEntry> = byChannel[channelId].orEmpty()
+    fun programmes(channelId: String): List<EpgEntry> = merged[channelId].orEmpty()
+
+    fun programmeAt(channelId: String, at: Long): EpgEntry? =
+        programmes(channelId).firstOrNull { it.startTime <= at && at < it.endTime }
 
     fun nowNext(channelId: String, at: Long = System.currentTimeMillis()): Pair<EpgEntry?, EpgEntry?> {
         val list = programmes(channelId)
@@ -42,48 +48,100 @@ class EpgStore(private val api: CooolApi, cacheDir: File) {
         return current to next
     }
 
-    /** Make sure the window covers at least the next 90 minutes. Cheap when it already does. */
-    suspend fun ensure() = mutex.withLock {
+    /** Guide data around now. Cheap when the blocks are already loaded. */
+    suspend fun ensure() {
+        val now = System.currentTimeMillis()
+        ensureRange(now - 30 * 60_000, now + 3 * BLOCK)
+    }
+
+    suspend fun ensureRange(from: Long, to: Long) = mutex.withLock {
         withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            if (windowEnd - now > MIN_AHEAD) return@withContext
-
-            val serverVersion = runCatching { api.epgVersion() }.getOrNull()
-            val cached = readMeta()
-            if (cached != null && cached.to - now > MIN_AHEAD && cached.from <= now &&
-                (serverVersion == null || serverVersion == cached.version)
-            ) {
-                runCatching { publish(file.readText(), cached.to) }.onSuccess { return@withContext }
+            val needed = blockStarts(from, to).filter { it !in blocks }
+            if (needed.isEmpty()) return@withContext
+            refreshVersion()
+            var changed = false
+            for (start in needed) {
+                val file = File(dir, "$start.json")
+                val raw = runCatching { file.readText() }.getOrNull()
+                    ?: runCatching { api.epgRaw(iso(start), iso(start + BLOCK), version) }.getOrNull()
+                        ?.also { runCatching { file.writeText(it) } }
+                    ?: continue
+                val parsed = runCatching { ApiJson.decodeFromString(SERIALIZER, raw) }.getOrNull() ?: continue
+                blocks[start] = parsed
+                changed = true
             }
-
-            val from = Instant.ofEpochMilli(now).truncatedTo(ChronoUnit.HOURS).minus(1, ChronoUnit.HOURS)
-            val to = from.plus(6, ChronoUnit.HOURS)
-            val raw = runCatching { api.epgRaw(from.toString(), to.toString(), serverVersion) }.getOrNull()
-                ?: return@withContext
-            publish(raw, to.toEpochMilli())
-            runCatching {
-                file.writeText(raw)
-                meta.writeText("${serverVersion ?: 0} ${from.toEpochMilli()} ${to.toEpochMilli()}")
+            if (changed) {
+                evict()
+                remerge()
             }
         }
     }
 
-    private fun publish(raw: String, end: Long) {
-        val parsed = ApiJson.decodeFromString(SERIALIZER, raw)
-        byChannel = parsed.mapValues { (_, v) -> v.sortedBy { it.startTime } }
-        windowEnd = end
+    /** Server says the guide changed (SSE `epg_updated`): drop everything and reload around now. */
+    suspend fun invalidate() {
+        mutex.withLock {
+            withContext(Dispatchers.IO) {
+                clearAll()
+                versionCheckedAt = 0
+            }
+        }
+        ensure()
+    }
+
+    private suspend fun refreshVersion() {
+        val now = System.currentTimeMillis()
+        if (now - versionCheckedAt < 10 * 60_000) return
+        val server = runCatching { api.epgVersion() }.getOrNull() ?: return
+        versionCheckedAt = now
+        if (server != version) {
+            clearAll()
+            version = server
+            runCatching { versionFile.writeText(server.toString()) }
+        }
+    }
+
+    private fun clearAll() {
+        blocks.clear()
+        dir.listFiles { f -> f.name.endsWith(".json") }?.forEach { it.delete() }
+        merged = emptyMap()
         _revision.value++
     }
 
-    private data class Meta(val version: Int, val from: Long, val to: Long)
+    private fun evict() {
+        val now = System.currentTimeMillis()
+        if (blocks.size > MAX_BLOCKS) {
+            blocks.keys.sortedByDescending { kotlin.math.abs(it + BLOCK / 2 - now) }
+                .take(blocks.size - MAX_BLOCKS)
+                .forEach { blocks.remove(it) }
+        }
+        val files = dir.listFiles { f -> f.name.endsWith(".json") }.orEmpty()
+        if (files.size > MAX_DISK_BLOCKS) {
+            files.sortedByDescending { f -> kotlin.math.abs((f.nameWithoutExtension.toLongOrNull() ?: 0) - now) }
+                .take(files.size - MAX_DISK_BLOCKS)
+                .forEach { it.delete() }
+        }
+    }
 
-    private fun readMeta(): Meta? = runCatching {
-        val (v, f, t) = meta.readText().trim().split(' ')
-        Meta(v.toInt(), f.toLong(), t.toLong())
-    }.getOrNull()
+    private fun remerge() {
+        val out = HashMap<String, MutableList<EpgEntry>>()
+        for (block in blocks.values) {
+            for ((channel, entries) in block) out.getOrPut(channel) { ArrayList() }.addAll(entries)
+        }
+        merged = out.mapValues { (_, v) -> v.distinctBy { it.id }.sortedBy { it.startTime } }
+        _revision.value++
+    }
+
+    private fun blockStarts(from: Long, to: Long): List<Long> {
+        val first = Math.floorDiv(from, BLOCK) * BLOCK
+        return generateSequence(first) { it + BLOCK }.takeWhile { it < to }.toList()
+    }
+
+    private fun iso(ms: Long) = Instant.ofEpochMilli(ms).toString()
 
     companion object {
-        private const val MIN_AHEAD = 90 * 60_000L
+        const val BLOCK = 3 * 60 * 60_000L
+        private const val MAX_BLOCKS = 16 // 48 h in memory
+        private const val MAX_DISK_BLOCKS = 40
         private val SERIALIZER = MapSerializer(String.serializer(), ListSerializer(EpgEntry.serializer()))
     }
 }

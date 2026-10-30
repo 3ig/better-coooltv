@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import dev.bettercoool.tv.data.Channel
+import dev.bettercoool.tv.ui.guide.Guide
 import dev.bettercoool.tv.ui.home.HomeScreen
 import dev.bettercoool.tv.ui.pairing.PairingScreen
 import dev.bettercoool.tv.ui.player.PlayerScreen
@@ -25,15 +26,26 @@ class MainActivity : ComponentActivity() {
         val graph = (application as CooolApp).graph
         setContent { AppRoot(graph) }
     }
+
+    override fun onStart() {
+        super.onStart()
+        (application as CooolApp).graph.events.start()
+    }
+
+    override fun onStop() {
+        (application as CooolApp).graph.events.stop()
+        super.onStop()
+    }
 }
 
 private sealed interface Screen {
     data object Pairing : Screen
     data object Home : Screen
-    data class Player(val channels: List<Channel>, val index: Int) : Screen
+    data class Player(val channels: List<Channel>, val index: Int, val from: Long? = null) : Screen
+    data class Guide(val channels: List<Channel>, val index: Int) : Screen
 }
 
-/** No navigation library: three screens and a back stack of one don't need it. */
+/** No navigation library: a handful of screens and a back stack of one don't need it. */
 @Composable
 private fun AppRoot(graph: AppGraph) {
     var screen by remember { mutableStateOf<Screen>(if (graph.session.isPaired) Screen.Home else Screen.Pairing) }
@@ -44,9 +56,21 @@ private fun AppRoot(graph: AppGraph) {
 
     Box(Modifier.fillMaxSize().background(Palette.Background)) {
         when (val s = screen) {
-            Screen.Pairing -> PairingScreen(graph, onPaired = { screen = Screen.Home })
-            Screen.Home -> HomeScreen(graph, onPlay = { channels, index -> screen = Screen.Player(channels, index) })
-            is Screen.Player -> PlayerScreen(graph, s.channels, s.index, onExit = { screen = Screen.Home })
+            Screen.Pairing -> PairingScreen(graph, onPaired = {
+                graph.events.start()
+                screen = Screen.Home
+            })
+            Screen.Home -> HomeScreen(
+                graph,
+                onPlay = { channels, index -> screen = Screen.Player(channels, index) },
+                onGuide = { channels, index -> screen = Screen.Guide(channels, index) },
+            )
+            is Screen.Player -> PlayerScreen(graph, s.channels, s.index, s.from, onExit = { screen = Screen.Home })
+            is Screen.Guide -> Guide(
+                graph, s.channels, s.index,
+                onPick = { index, from -> screen = Screen.Player(s.channels, index, from) },
+                onClose = { screen = Screen.Home },
+            )
         }
     }
 }

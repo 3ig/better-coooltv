@@ -40,4 +40,15 @@
     <string name="err_playback">Couldn’t play this channel.</string>
     <string name="err_uhd">This channel is 4K (HEVC 10-bit) and this TV can’t decode it.</string>
     <string name="press_ok_retry">Press OK to retry</string>
+    <string name="guide">Guide</string>
+    <string name="guide_watch">OK · Watch</string>
+    <string name="guide_watch_start">OK · Watch from the start</string>
+    <string name="guide_no_catchup">Not available to replay</string>
+    <string name="guide_starts">Starts at %1$s</string>
+    <string name="today">Today</string>
+    <string name="catchup">Replay</string>
+    <string name="paused">Paused</string>
+    <string name="live">Live</string>
+    <string name="pin_title">PIN for %1$s</string>
+    <string name="pin_wrong">Wrong PIN</string>
 </resources>
