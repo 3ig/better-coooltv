@@ -8,6 +8,12 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-31
+
+### Fixed
+- Guide button on remotes that send a vendor key code instead of the standard one (e.g. TCL).
+- Update dialog: changelog lines that wrap in the source are shown as one bullet.
+
 ## [0.2.0] - 2026-10-30
 
 First public release.
@@ -25,5 +31,6 @@ First public release.
 - Selectable main colour (coool green, mint, sky, lavender, coral, amber, rose, silver).
 - In-app updates from GitHub Releases.
 
-[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.1
 [0.2.0]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.0

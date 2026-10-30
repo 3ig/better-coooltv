@@ -137,16 +137,25 @@ class Updater(private val context: Context) {
             return false
         }
 
-        /** Release notes are Markdown; show them as plain text with bullets. */
-        fun plainNotes(markdown: String): String = markdown.lines()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("<!--") }
-            .joinToString("\n") { line ->
-                line.replace(Regex("^#+\\s*"), "")
+        /**
+         * Release notes are Markdown; show them as plain text with bullets. Lines that continue a
+         * wrapped bullet in the source are joined back onto it.
+         */
+        fun plainNotes(markdown: String): String {
+            val out = mutableListOf<String>()
+            for (raw in markdown.lines()) {
+                val line = raw.trim()
+                if (line.isEmpty() || line.startsWith("<!--")) continue
+                val isNew = line.startsWith("#") || line.matches(Regex("^[-*]\\s+.*"))
+                val text = line.replace(Regex("^#+\\s*"), "")
                     .replace(Regex("^[-*]\\s+"), "• ")
                     .replace("**", "")
                     .replace("`", "")
+                if (!isNew && out.isNotEmpty() && out.last().startsWith("• ")) out[out.lastIndex] = out.last() + " " + text
+                else out += text
             }
+            return out.joinToString("\n")
+        }
     }
 }
 

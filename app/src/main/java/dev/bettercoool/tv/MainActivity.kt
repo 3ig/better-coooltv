@@ -45,8 +45,19 @@ class MainActivity : ComponentActivity() {
         if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
             KeyRepeat.active = event.action == KeyEvent.ACTION_DOWN && event.repeatCount > 0
         }
-        return super.dispatchKeyEvent(event)
+        return super.dispatchKeyEvent(normalizeGuideKey(event))
     }
+
+    /**
+     * Some TV makers map the remote's Guide/EPG button to their own key code (TCL sends 4001) instead
+     * of KEYCODE_GUIDE. The Linux scan code is still KEY_EPG (365) or KEY_PROGRAM (362), so use that.
+     */
+    private fun normalizeGuideKey(e: KeyEvent): KeyEvent =
+        if (e.keyCode != KeyEvent.KEYCODE_GUIDE && (e.scanCode == SCAN_KEY_EPG || e.scanCode == SCAN_KEY_PROGRAM)) {
+            KeyEvent(e.downTime, e.eventTime, e.action, KeyEvent.KEYCODE_GUIDE, e.repeatCount, e.metaState, e.deviceId, e.scanCode, e.flags, e.source)
+        } else {
+            e
+        }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -88,6 +99,9 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 }
+
+private const val SCAN_KEY_PROGRAM = 362 // Linux input-event-codes.h
+private const val SCAN_KEY_EPG = 365
 
 private sealed interface Screen {
     data object Pairing : Screen
