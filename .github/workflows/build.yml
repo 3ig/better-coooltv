@@ -17,6 +17,8 @@ jobs:
       HAS_KEYSTORE: ${{ secrets.RELEASE_KEYSTORE_BASE64 != '' }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, for naming branch builds after the latest release
 
       - uses: actions/setup-java@v4
         with:
@@ -28,7 +30,13 @@ jobs:
       - name: Version
         id: ver
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then NAME="${GITHUB_REF_NAME#v}"; else NAME="0.1.0-ci.${GITHUB_RUN_NUMBER}"; fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            NAME="${GITHUB_REF_NAME#v}"
+          else
+            # e.g. 0.2.0-ci.7: same base as the latest release, so the updater never offers it as "newer"
+            BASE=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null | sed 's/^v//')
+            NAME="${BASE:-0.1.0}-ci.${GITHUB_RUN_NUMBER}"
+          fi
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
 
