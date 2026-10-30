@@ -8,6 +8,8 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-31
+
 ### Fixed
 - TV screensavers (e.g. on TCL) no longer start while a channel is playing; they still can when paused.
 
@@ -34,6 +36,7 @@ First public release.
 - Selectable main colour (coool green, mint, sky, lavender, coral, amber, rose, silver).
 - In-app updates from GitHub Releases.
 
-[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.2
 [0.2.1]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.1
 [0.2.0]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.0
