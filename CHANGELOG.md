@@ -8,6 +8,9 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+### Fixed
+- TV screensavers (e.g. on TCL) no longer start while a channel is playing; they still can when paused.
+
 ## [0.2.1] - 2026-10-31
 
 ### Fixed

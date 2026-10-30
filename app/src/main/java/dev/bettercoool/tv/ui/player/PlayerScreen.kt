@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
@@ -191,9 +192,14 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         else -> System.currentTimeMillis() - player.currentLiveOffset.let { if (it in 3_000L..90_000L) it else LIVE_LATENCY }
     }
 
+    // Keeps TV screensavers (e.g. TCL's) away only while video is actually playing.
+    val view = LocalView.current
     DisposableEffect(player) {
         val listener = object : Player.Listener {
-            override fun onIsPlayingChanged(isPlaying: Boolean) = clock.playing(isPlaying)
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                clock.playing(isPlaying)
+                view.keepScreenOn = isPlaying
+            }
 
             override fun onVideoSizeChanged(size: VideoSize) {
                 if (size.height > 0) aspect = size.width * size.pixelWidthHeightRatio / size.height
@@ -234,6 +240,7 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         player.addAnalyticsListener(analytics)
         onDispose {
             player.removeListener(listener)
+            view.keepScreenOn = false
             player.removeAnalyticsListener(analytics)
             player.release()
         }
