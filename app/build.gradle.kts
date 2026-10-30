@@ -13,8 +13,9 @@ android {
         applicationId = "dev.bettercoool.tv"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI passes -PappVersionCode / -PappVersionName so every build can install over the previous one.
+        versionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() ?: 1
+        versionName = providers.gradleProperty("appVersionName").orNull ?: "0.1.0"
     }
 
     // Release key lives outside the repo; its location and passwords come from ~/.gradle/gradle.properties.

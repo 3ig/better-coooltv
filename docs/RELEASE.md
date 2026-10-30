@@ -24,3 +24,18 @@ They install side by side and pair separately.
 ```bash
 ./gradlew :app:assembleRelease   # app/build/outputs/apk/release/app-release.apk
 ```
+
+## GitHub Actions
+
+`.github/workflows/build.yml` builds a release APK on every push and pull request, and publishes a
+GitHub Release with the APK for tags named `v*`. Signing uses these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | `base64 -i ~/.config/better-coooltv/release.jks` |
+| `RELEASE_STORE_PASSWORD` | `coooltvReleaseStorePassword` |
+| `RELEASE_KEY_ALIAS` | `release` |
+| `RELEASE_KEY_PASSWORD` | `coooltvReleaseKeyPassword` |
+
+Without the keystore secret, branch builds fall back to the debug key (not upgrade-compatible with
+release installs) and tagged builds fail on purpose.
