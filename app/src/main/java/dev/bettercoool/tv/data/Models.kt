@@ -58,8 +58,9 @@ data class Profile(
     val name: String,
     val imageUrl: String? = null,
     val pinCode: String? = null,
+    val isProtected: Boolean = false,
 ) {
-    val isLocked: Boolean get() = !pinCode.isNullOrBlank()
+    val isLocked: Boolean get() = isProtected || !pinCode.isNullOrBlank()
 }
 
 @Serializable
@@ -72,9 +73,27 @@ data class Channel(
     val streamTimeshift: String? = null,
     val hasTimeshift: Boolean = false,
     val includedInPlan: Boolean = true,
+    /** Sent by the server, ignored by the original app: information, news, sports, cinema, … */
+    val category: String? = null,
+    /** "sd" | "hd" | "uhd" */
+    val resolution: String? = null,
 ) {
     val playable: Boolean get() = includedInPlan && !stream.isNullOrBlank()
+    val isUhd: Boolean get() = resolution == "uhd"
 }
+
+/** `/epg/filter` entry: times in epoch ms, duration in seconds. */
+@Serializable
+data class EpgEntry(
+    val id: Long,
+    val name: String,
+    val description: String? = null,
+    val startTime: Long,
+    val endTime: Long,
+)
+
+@Serializable
+data class EpgVersion(val version: Int)
 
 @Serializable
 data class CreateSessionRequest(

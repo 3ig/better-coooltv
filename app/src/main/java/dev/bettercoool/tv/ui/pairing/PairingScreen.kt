@@ -16,6 +16,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,7 +69,7 @@ fun PairingScreen(graph: AppGraph, onPaired: () -> Unit) {
                     .padding(horizontal = 28.dp, vertical = 14.dp),
             ) {
                 when (state) {
-                    is PairingState.ShowCode -> Txt(code!!.code, Type.Code)
+                    is PairingState.ShowCode -> PairingCode(code!!.code)
                     PairingState.Retrying -> Txt(stringResource(R.string.pair_error), Type.BodyDim)
                     PairingState.Connecting, PairingState.Paired -> Txt(stringResource(R.string.pair_connecting), Type.BodyDim)
                     PairingState.Loading -> Txt(stringResource(R.string.pair_loading), Type.BodyDim)
@@ -100,6 +106,19 @@ private fun Step(n: Int, text: String) {
         Spacer(Modifier.width(16.dp))
         Txt(text, Type.Body)
     }
+}
+
+/** Monospace, with digits in the accent colour so O/0 and I/1 can't be confused. */
+@Composable
+private fun PairingCode(code: String) {
+    val text = remember(code) {
+        buildAnnotatedString {
+            code.forEach { c ->
+                if (c.isDigit()) withStyle(SpanStyle(color = Palette.Accent)) { append(c) } else append(c)
+            }
+        }
+    }
+    BasicText(text, style = Type.Code.copy(fontFamily = FontFamily.Monospace))
 }
 
 /** Only this small text recomposes every second. */

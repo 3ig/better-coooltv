@@ -5,6 +5,7 @@ import android.content.Context
 import dev.bettercoool.tv.data.Catalog
 import dev.bettercoool.tv.data.CooolApi
 import dev.bettercoool.tv.data.DeviceInfo
+import dev.bettercoool.tv.data.EpgStore
 import dev.bettercoool.tv.data.SessionStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,4 +28,5 @@ class AppGraph(context: Context) {
     val device = DeviceInfo.from(context)
     val api = CooolApi(session)
     val catalog = Catalog(api, session)
+    val epg = EpgStore(api, context.cacheDir)
 }

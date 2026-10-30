@@ -42,7 +42,11 @@ Lightweight native replacement for Coool TV 2.0.13 (React Native/Hermes). Specs 
 6. **Polish** — channel preview thumbnails, favorites/categories (local), audio/subtitle selection, Baseline Profile, testing on real low-end hardware.
 
 ## Status (2026-10-30)
-Milestones 1–2 done, plus a first cut of 3 and 4: pairing against production works; profiles and channel list load; live HLS playback with session/heartbeat and Up/Down zapping works on the emulator. Real response shapes are in [re/live_api_notes.md](re/live_api_notes.md), which answers the questions below. Next: number-key zapping, category filters + 4K badges (server sends `category`/`resolution`), EPG with narrow windows + disk cache, a Main10 capability check for UHD channels, and session error screens.
+Milestones 1–2 done, plus a first cut of 3 and 4: pairing against production works; profiles and channel list load; live HLS playback with session/heartbeat and Up/Down zapping works on the emulator. Real response shapes are in [re/live_api_notes.md](re/live_api_notes.md), which answers the questions below. Verified on a real Philips 2021/22 UHD TV (MediaTek MT5895, Android 11, 32-bit): 4K HEVC Main10 2160p50 plays on the hardware decoder with no dropped frames; ~108 MB PSS during 4K with the 32 MB buffer cap.
+
+Done since: number-key zapping (home + player), category filters + 4K badges, what's-on line per channel, now/next (home preview + player banner), EPG 6 h rolling window with disk cache keyed on cache-version, Main10 capability check, error card with server messages (sessions limit, inactive service).
+
+Next: full EPG grid (custom-drawn), catch-up/timeshift playback, PIN entry for protected profiles, device SSE events (`epg_updated`, `channel_*`, `device_deleted`), release build with R8 + Baseline Profile and cold-start measurement.
 
 ## Open questions (answered — see re/live_api_notes.md)
 - `startTime`/`endTime` format, channel `id` type, whether logo URLs are absolute.

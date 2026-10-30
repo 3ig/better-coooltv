@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
@@ -27,7 +28,8 @@ import okhttp3.sse.EventSources
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class ApiException(val status: Int, val errorCode: String?, message: String) : IOException(message)
+/** [serverMessage] is the server's own (Bulgarian) user-facing text from `detail.messages`. */
+class ApiException(val status: Int, val errorCode: String?, val serverMessage: String?, message: String) : IOException(message)
 
 data class SseEvent(val type: String, val data: String)
 
@@ -97,6 +99,15 @@ class CooolApi(private val store: SessionStore) {
         get("devices/$serverDeviceId/profiles/$profileUuid/channels") {
             ApiJson.decodeFromString(ListSerializer(Channel.serializer()), it)
         }
+
+    // ---- EPG ----
+
+    suspend fun epgVersion(): Int =
+        get("epg/cache-version") { ApiJson.decodeFromString(EpgVersion.serializer(), it).version }
+
+    /** Raw JSON of `{channelId: [EpgEntry…]}` for all channels; caller caches it on disk. */
+    suspend fun epgRaw(fromIso: String, toIso: String, version: Int?): String =
+        get("epg/filter", *listOfNotNull("from" to fromIso, "to" to toIso, version?.let { "v" to it.toString() }).toTypedArray()) { it }
 
     // ---- playback sessions ----
 
@@ -173,9 +184,12 @@ class CooolApi(private val store: SessionStore) {
 
     private fun apiError(status: Int, body: String): ApiException {
         // Error bodies look like {"detail": {"errorCode": "...", "messages": ...}}
-        val detail = runCatching { ApiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull()
-        val code = runCatching { (detail as? JsonObject)?.get("errorCode")?.jsonPrimitive?.contentOrNull }.getOrNull()
-        return ApiException(status, code, "HTTP $status${code?.let { " $it" } ?: ""}")
+        val detail = runCatching { ApiJson.parseToJsonElement(body).jsonObject["detail"] }.getOrNull() as? JsonObject
+        val code = runCatching { detail?.get("errorCode")?.jsonPrimitive?.contentOrNull }.getOrNull()
+        val text = runCatching {
+            (detail?.get("messages") as? JsonArray)?.joinToString("\n") { it.jsonPrimitive.content }
+        }.getOrNull()
+        return ApiException(status, code, text, "HTTP $status${code?.let { " $it" } ?: ""}")
     }
 
     private object NoAuth

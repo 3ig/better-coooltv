@@ -19,4 +19,25 @@
     <string name="locked">Locked</string>
 
     <string name="player_error">Playback failed</string>
+    <string name="cat_all">All</string>
+    <string name="cat_information">General</string>
+    <string name="cat_news">News</string>
+    <string name="cat_sports">Sports</string>
+    <string name="cat_cinema">Movies</string>
+    <string name="cat_entertainments">Entertainment</string>
+    <string name="cat_science">Documentary</string>
+    <string name="cat_childrens">Kids</string>
+    <string name="cat_music">Music</string>
+    <string name="cat_uhd">4K</string>
+
+    <string name="epg_now">Now</string>
+    <string name="epg_next">Next</string>
+    <string name="epg_none">No programme information</string>
+    <string name="uhd_unsupported">This TV can’t decode 4K channels</string>
+
+    <string name="err_sessions">Too many devices are watching right now. Stop playback on another device, then press OK to retry.</string>
+    <string name="err_service">Your Coool TV service is not active.</string>
+    <string name="err_playback">Couldn’t play this channel.</string>
+    <string name="err_uhd">This channel is 4K (HEVC 10-bit) and this TV can’t decode it.</string>
+    <string name="press_ok_retry">Press OK to retry</string>
 </resources>

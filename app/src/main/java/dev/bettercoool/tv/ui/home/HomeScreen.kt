@@ -16,36 +16,54 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import dev.bettercoool.tv.AppGraph
 import dev.bettercoool.tv.R
+import dev.bettercoool.tv.data.Capabilities
 import dev.bettercoool.tv.data.Catalog
 import dev.bettercoool.tv.data.Channel
+import dev.bettercoool.tv.data.EpgStore
 import dev.bettercoool.tv.data.Profile
+import dev.bettercoool.tv.ui.common.Badge
+import dev.bettercoool.tv.ui.common.CategoryOrder
+import dev.bettercoool.tv.ui.common.NowNext
+import dev.bettercoool.tv.ui.common.NumberEntry
+import dev.bettercoool.tv.ui.common.categoryLabel
+import dev.bettercoool.tv.ui.common.digitFor
+import dev.bettercoool.tv.ui.common.minuteClock
 import dev.bettercoool.tv.ui.theme.FocusCard
 import dev.bettercoool.tv.ui.theme.Palette
 import dev.bettercoool.tv.ui.theme.Txt
 import dev.bettercoool.tv.ui.theme.Type
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private const val FILTER_UHD = "__uhd"
 
 @Composable
 fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit) {
@@ -63,6 +81,14 @@ fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit) {
             throw e
         } catch (e: Exception) {
             failed = true
+        }
+    }
+
+    // Guide window refresh; ensure() is a no-op while the cached window is still good.
+    LaunchedEffect(Unit) {
+        while (true) {
+            graph.epg.ensure()
+            delay(10 * 60_000)
         }
     }
 
@@ -91,71 +117,128 @@ private fun ChannelBrowser(
     onPlay: (List<Channel>, Int) -> Unit,
 ) {
     val profile = snapshot.profile!!
-    val channels = snapshot.channels
-    val startIndex = remember(channels) {
-        channels.indexOfFirst { it.id == graph.session.lastChannel(profile.uuid) }.coerceAtLeast(0)
+    val all = snapshot.channels
+    var filter by remember { mutableStateOf<String?>(null) }
+    val visible = remember(all, filter) {
+        when (filter) {
+            null -> all
+            FILTER_UHD -> all.filter { it.isUhd }
+            else -> all.filter { it.category == filter }
+        }
+    }
+    val filters = remember(all) {
+        val present = all.mapNotNull { it.category }.toSet()
+        listOf<String?>(null) + CategoryOrder.filter { it in present } +
+            (present - CategoryOrder.toSet()).sorted() +
+            (if (all.any { it.isUhd }) listOf(FILTER_UHD) else emptyList())
+    }
+
+    val startIndex = remember(all) {
+        all.indexOfFirst { it.id == graph.session.lastChannel(profile.uuid) }.coerceAtLeast(0)
     }
     var focusedIndex by remember { mutableIntStateOf(startIndex) }
+    var focusTarget by remember { mutableIntStateOf(startIndex) }
+    var jumpKey by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (startIndex - 3).coerceAtLeast(0))
-    val initialFocus = remember { FocusRequester() }
+    val targetFocus = remember { FocusRequester() }
 
-    LaunchedEffect(channels) {
-        if (channels.isNotEmpty()) runCatching { initialFocus.requestFocus() }
+    LaunchedEffect(jumpKey) {
+        if (visible.isEmpty()) return@LaunchedEffect
+        listState.scrollToItem((focusTarget - 3).coerceAtLeast(0))
+        withFrameNanos { }
+        runCatching { targetFocus.requestFocus() }
     }
 
-    Row(Modifier.fillMaxSize().padding(start = 48.dp, top = 36.dp, end = 48.dp)) {
-        Column(Modifier.width(420.dp).fillMaxHeight()) {
-            Header(snapshot, onProfile)
-            Spacer(Modifier.height(16.dp))
-            LazyColumn(
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                contentPadding = PaddingValues(bottom = 36.dp),
-            ) {
-                itemsIndexed(channels, key = { _, c -> c.id }) { index, channel ->
-                    ChannelRow(
-                        channel = channel,
-                        modifier = Modifier
-                            .then(if (index == startIndex) Modifier.focusRequester(initialFocus) else Modifier)
-                            .onFocusChanged { if (it.isFocused) focusedIndex = index },
-                        onClick = {
-                            if (channel.playable) {
-                                graph.session.setLastChannel(profile.uuid, channel.id)
-                                onPlay(channels, index)
-                            }
-                        },
-                    )
-                }
+    // Number entry: type a channel number anywhere on this screen.
+    var digits by remember { mutableStateOf("") }
+    LaunchedEffect(digits) {
+        if (digits.isEmpty()) return@LaunchedEffect
+        delay(1_200)
+        val inVisible = visible.indexOfFirst { it.number == digits }
+        if (inVisible >= 0) {
+            focusTarget = inVisible
+        } else {
+            val inAll = all.indexOfFirst { it.number == digits }
+            if (inAll >= 0) {
+                filter = null
+                focusTarget = inAll
             }
         }
-        Spacer(Modifier.width(48.dp))
-        Preview(channels.getOrNull(focusedIndex), Modifier.weight(1f).fillMaxHeight())
+        jumpKey++
+        digits = ""
+    }
+
+    val epgRevision by graph.epg.revision.collectAsState()
+    val clock = minuteClock()
+
+    Box(
+        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+            val d = digitFor(e.nativeKeyEvent.keyCode)
+            if (d != null && e.type == KeyEventType.KeyDown) {
+                if (digits.length < 4) digits += d
+                true
+            } else {
+                false
+            }
+        },
+    ) {
+        Row(Modifier.fillMaxSize().padding(start = 48.dp, top = 32.dp, end = 48.dp)) {
+            Column(Modifier.width(440.dp).fillMaxHeight()) {
+                Header(snapshot, onProfile)
+                Spacer(Modifier.height(14.dp))
+                FilterRow(filters, filter) {
+                    filter = it
+                    focusedIndex = 0
+                    focusTarget = 0
+                }
+                Spacer(Modifier.height(12.dp))
+                LazyColumn(
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    contentPadding = PaddingValues(bottom = 36.dp),
+                ) {
+                    itemsIndexed(visible, key = { _, c -> c.id }) { index, channel ->
+                        ChannelRow(
+                            channel = channel,
+                            nowTitle = remember(channel.id, epgRevision, clock) {
+                                graph.epg.nowNext(channel.id, clock).first?.name
+                            },
+                            modifier = Modifier
+                                .then(if (index == focusTarget) Modifier.focusRequester(targetFocus) else Modifier)
+                                .onFocusChanged { if (it.isFocused) focusedIndex = index },
+                            onClick = {
+                                if (channel.playable) {
+                                    graph.session.setLastChannel(profile.uuid, channel.id)
+                                    onPlay(visible, index)
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+            Spacer(Modifier.width(56.dp))
+            Preview(visible.getOrNull(focusedIndex), graph.epg, epgRevision, clock, Modifier.weight(1f).fillMaxHeight())
+        }
+
+        if (digits.isNotEmpty()) {
+            NumberEntry(digits, all.firstOrNull { it.number == digits }?.name, Modifier.align(Alignment.TopEnd).padding(40.dp))
+        }
     }
 }
 
 @Composable
 private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit) {
-    Column {
-        Txt(stringResource(R.string.app_name).uppercase(), Type.Label, color = Palette.Accent)
-        Spacer(Modifier.height(4.dp))
-        Txt(stringResource(R.string.home_channels, snapshot.channels.size), Type.Label)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Txt(stringResource(R.string.app_name).uppercase(), Type.Label, color = Palette.Accent)
+            Spacer(Modifier.height(2.dp))
+            Txt(stringResource(R.string.home_channels, snapshot.channels.size), Type.Label)
+        }
         if (snapshot.profiles.size > 1) {
-            Spacer(Modifier.height(12.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                itemsIndexed(snapshot.profiles, key = { _, p -> p.uuid }) { _, p ->
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                items(snapshot.profiles, key = { it.uuid }) { p ->
                     val current = p.uuid == snapshot.profile?.uuid
-                    FocusCard(
-                        onClick = { onProfile(p) },
-                        shape = RoundedCornerShape(50),
-                        idleColor = if (current) Palette.SurfaceHigh else Palette.Surface,
-                    ) { focused ->
-                        Txt(
-                            p.name + if (p.isLocked) " 🔒" else "",
-                            Type.Label,
-                            Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                            color = if (focused) Palette.OnFocus else if (current) Palette.Text else Palette.TextDim,
-                        )
-                    }
+                    Chip(p.name + if (p.isLocked) " 🔒" else "", selected = current) { onProfile(p) }
                 }
             }
         }
@@ -163,8 +246,42 @@ private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit) {
 }
 
 @Composable
-private fun ChannelRow(channel: Channel, modifier: Modifier, onClick: () -> Unit) {
-    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth().height(56.dp)) { focused ->
+private fun FilterRow(filters: List<String?>, selected: String?, onSelect: (String?) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        items(filters, key = { it ?: "" }) { f ->
+            val label = when (f) {
+                null -> stringResource(R.string.cat_all)
+                FILTER_UHD -> stringResource(R.string.cat_uhd)
+                else -> categoryLabel(f)
+            }
+            Chip(label, selected = f == selected) { onSelect(f) }
+        }
+    }
+}
+
+@Composable
+private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
+    FocusCard(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        idleColor = if (selected) Palette.SurfaceHigh else Palette.Surface,
+    ) { focused ->
+        Txt(
+            text,
+            Type.Label,
+            Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            color = when {
+                focused -> Palette.OnFocus
+                selected -> Palette.Text
+                else -> Palette.TextDim
+            },
+        )
+    }
+}
+
+@Composable
+private fun ChannelRow(channel: Channel, nowTitle: String?, modifier: Modifier, onClick: () -> Unit) {
+    FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth().height(60.dp)) { focused ->
         val main = when {
             focused -> Palette.OnFocus
             channel.playable -> Palette.Text
@@ -181,14 +298,23 @@ private fun ChannelRow(channel: Channel, modifier: Modifier, onClick: () -> Unit
                 }
             }
             Spacer(Modifier.width(14.dp))
-            Txt(channel.name, Type.Body, Modifier.weight(1f), maxLines = 1, color = main)
+            Column(Modifier.weight(1f)) {
+                Txt(channel.name, Type.Body, maxLines = 1, color = main)
+                if (nowTitle != null) {
+                    Txt(nowTitle, Type.Label, maxLines = 1, color = if (focused) Palette.OnFocus.copy(alpha = 0.7f) else Palette.TextFaint)
+                }
+            }
+            if (channel.isUhd) {
+                Spacer(Modifier.width(8.dp))
+                Badge("4K", color = if (Capabilities.uhdHevcMain10) Palette.Accent else Palette.TextFaint)
+            }
         }
     }
 }
 
 @Composable
-private fun Preview(channel: Channel?, modifier: Modifier) {
-    Column(modifier.padding(top = 64.dp)) {
+private fun Preview(channel: Channel?, epg: EpgStore, epgRevision: Int, clock: Long, modifier: Modifier) {
+    Column(modifier.padding(top = 56.dp)) {
         if (channel == null) return@Column
         Box(
             Modifier.size(width = 200.dp, height = 112.dp).background(Palette.Surface, RoundedCornerShape(16.dp)),
@@ -198,11 +324,28 @@ private fun Preview(channel: Channel?, modifier: Modifier) {
                 AsyncImage(model = channel.logo, contentDescription = null, modifier = Modifier.padding(18.dp).fillMaxSize())
             }
         }
-        Spacer(Modifier.height(24.dp))
-        Txt(listOfNotNull(channel.number, channel.name).joinToString("  "), Type.Display)
-        Spacer(Modifier.height(8.dp))
-        if (!channel.includedInPlan) Txt(stringResource(R.string.not_in_plan), Type.BodyDim)
-        // Now/next from the EPG lands here in milestone 5.
+        Spacer(Modifier.height(22.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Txt(listOfNotNull(channel.number, channel.name).joinToString("  "), Type.Display, Modifier.weight(1f, fill = false), maxLines = 1)
+            if (channel.isUhd) {
+                Spacer(Modifier.width(12.dp))
+                Badge("4K")
+            }
+        }
+        channel.category?.let {
+            Spacer(Modifier.height(4.dp))
+            Txt(categoryLabel(it), Type.Label)
+        }
+        if (!channel.includedInPlan) {
+            Spacer(Modifier.height(8.dp))
+            Txt(stringResource(R.string.not_in_plan), Type.BodyDim)
+        } else if (channel.isUhd && !Capabilities.uhdHevcMain10) {
+            Spacer(Modifier.height(8.dp))
+            Txt(stringResource(R.string.uhd_unsupported), Type.BodyDim, color = Palette.Accent)
+        }
+        Spacer(Modifier.height(28.dp))
+        val (now, next) = remember(channel.id, epgRevision, clock) { epg.nowNext(channel.id, clock) }
+        NowNext(now, next, clock, descriptionLines = 4)
     }
 }
 
