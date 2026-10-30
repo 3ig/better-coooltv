@@ -43,6 +43,8 @@ import dev.bettercoool.tv.AppLocale
 import dev.bettercoool.tv.BuildConfig
 import dev.bettercoool.tv.R
 import dev.bettercoool.tv.data.Capabilities
+import dev.bettercoool.tv.data.Updater
+import dev.bettercoool.tv.ui.update.UpdateDialog
 import dev.bettercoool.tv.ui.theme.FocusCard
 import dev.bettercoool.tv.ui.theme.Palette
 import dev.bettercoool.tv.ui.theme.requestFocusSoon
@@ -51,6 +53,8 @@ import dev.bettercoool.tv.ui.theme.Type
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+private enum class UpdateState { Idle, Checking, UpToDate, Error }
+
 @Composable
 fun SettingsScreen(graph: AppGraph, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -58,6 +62,8 @@ fun SettingsScreen(graph: AppGraph, onBack: () -> Unit) {
     val first = remember { FocusRequester() }
     var guideReloaded by remember { mutableStateOf(false) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var updateState by remember { mutableStateOf(UpdateState.Idle) }
+    var found by remember { mutableStateOf<Updater.Release?>(null) }
 
     LaunchedEffect(Unit) { first.requestFocusSoon() }
     LaunchedEffect(confirmSignOut) {
@@ -97,6 +103,27 @@ fun SettingsScreen(graph: AppGraph, onBack: () -> Unit) {
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+                if (graph.updater.enabled) {
+                    Action(
+                        text = stringResource(R.string.settings_check_updates) + when (updateState) {
+                            UpdateState.Checking -> " · " + stringResource(R.string.settings_checking)
+                            UpdateState.UpToDate -> " · " + stringResource(R.string.settings_up_to_date)
+                            UpdateState.Error -> " · " + stringResource(R.string.settings_update_error)
+                            UpdateState.Idle -> ""
+                        },
+                    ) {
+                        if (updateState != UpdateState.Checking) scope.launch {
+                            updateState = UpdateState.Checking
+                            updateState = try {
+                                found = graph.updater.check()
+                                if (found == null) UpdateState.UpToDate else UpdateState.Idle
+                            } catch (e: Exception) {
+                                UpdateState.Error
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
                 Action(
                     text = stringResource(if (confirmSignOut) R.string.settings_signout_confirm else R.string.settings_signout),
                     danger = true,
@@ -153,6 +180,7 @@ fun SettingsScreen(graph: AppGraph, onBack: () -> Unit) {
             }
         }
     }
+    found?.let { UpdateDialog(graph.updater, it, onDismiss = { found = null }) }
 }
 
 @Composable

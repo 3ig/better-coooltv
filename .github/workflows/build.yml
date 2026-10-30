@@ -64,9 +64,40 @@ jobs:
           name: coool-tv-lite-${{ steps.ver.outputs.name }}
           path: coool-tv-lite-*.apk
 
+      - name: Release notes from CHANGELOG.md
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          VERSION: ${{ steps.ver.outputs.name }}
+        run: |
+          APK="coool-tv-lite-${VERSION}.apk"
+          sha256sum "$APK" > "$APK.sha256"
+          # Section between "## [VERSION]" and the next "## [" heading.
+          awk -v v="$VERSION" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on && /^\[[^]]+\]: / { next }
+            on { print }
+          ' CHANGELOG.md > section.md
+          if [ ! -s section.md ]; then
+            echo "::error::CHANGELOG.md has no '## [${VERSION}]' section"
+            exit 1
+          fi
+          {
+            cat section.md
+            echo
+            echo "### Install"
+            echo
+            echo "Download **${APK}** below and sideload it (e.g. \`adb install ${APK}\`), or update from inside the app."
+            echo "Needs Android TV / Google TV / Fire TV with Android 7.0+. SHA-256: \`$(cut -d' ' -f1 "$APK.sha256")\`"
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Publish GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: coool-tv-lite-*.apk
-          generate_release_notes: true
+          name: Coool TV Lite ${{ steps.ver.outputs.name }}
+          body_path: release-notes.md
+          files: |
+            coool-tv-lite-*.apk
+            coool-tv-lite-*.apk.sha256

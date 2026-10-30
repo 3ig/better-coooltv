@@ -107,4 +107,18 @@
     <string name="color_rose">Роза</string>
     <string name="color_silver">Сребро</string>
     <string name="hint_menu_right">▶ Меню и категории</string>
+    <string name="update_title">Налична е нова версия %1$s</string>
+    <string name="update_current">Инсталирана: %1$s</string>
+    <string name="update_now">Обнови</string>
+    <string name="update_later">По-късно</string>
+    <string name="update_downloading">Изтегляне… %1$d%%</string>
+    <string name="update_installing">Потвърдете инсталирането на екрана</string>
+    <string name="update_failed">Обновяването не успя</string>
+    <string name="update_allow">Разрешете инсталиране от това приложение, после натиснете Обнови отново</string>
+    <string name="settings_updates">Обновления</string>
+    <string name="settings_check_updates">Провери за обновления</string>
+    <string name="settings_checking">Проверка…</string>
+    <string name="settings_up_to_date">Имате последната версия</string>
+    <string name="settings_updates_dev">Само в release версията</string>
+    <string name="settings_update_error">Няма връзка с GitHub</string>
 </resources>

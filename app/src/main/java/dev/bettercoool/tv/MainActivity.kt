@@ -20,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import dev.bettercoool.tv.data.Channel
+import dev.bettercoool.tv.data.Updater
+import dev.bettercoool.tv.ui.update.UpdateDialog
 import dev.bettercoool.tv.ui.guide.Guide
 import dev.bettercoool.tv.ui.home.HomeScreen
 import dev.bettercoool.tv.ui.pairing.PairingScreen
@@ -99,6 +101,14 @@ private sealed interface Screen {
 @Composable
 private fun AppRoot(graph: AppGraph) {
     var screen by remember { mutableStateOf<Screen>(if (graph.session.isPaired) Screen.Home else Screen.Pairing) }
+    var updateOffer by remember { mutableStateOf<Updater.Release?>(null) }
+
+    // Release builds look for a newer GitHub release at most every 12 h, only on the home screen.
+    LaunchedEffect(screen == Screen.Home) {
+        if (screen == Screen.Home && graph.updater.enabled && graph.updater.checkDue) {
+            updateOffer = runCatching { graph.updater.check() }.getOrNull()
+        }
+    }
 
     LaunchedEffect(Unit) {
         graph.session.loggedOut.collect { screen = Screen.Pairing }
@@ -124,6 +134,9 @@ private fun AppRoot(graph: AppGraph) {
                 onClose = { screen = Screen.Home },
             )
             Screen.Settings -> SettingsScreen(graph, onBack = { screen = Screen.Home })
+        }
+        if (screen == Screen.Home) {
+            updateOffer?.let { UpdateDialog(graph.updater, it, onDismiss = { updateOffer = null }) }
         }
     }
 }

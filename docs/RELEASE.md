@@ -39,3 +39,15 @@ GitHub Release with the APK for tags named `v*`. Signing uses these repository s
 
 Without the keystore secret, branch builds fall back to the debug key (not upgrade-compatible with
 release installs) and tagged builds fail on purpose.
+
+## Cutting a release
+
+1. Move the items under `## [Unreleased]` in `CHANGELOG.md` into a new `## [X.Y.Z] - YYYY-MM-DD` section
+   (and add its compare link at the bottom). Commit and push.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Actions builds the signed APK and publishes the release **Coool TV Lite X.Y.Z** with that changelog
+   section, install notes, the APK and its SHA-256. The job fails if the section is missing.
+
+Installed copies (release builds) check `releases/latest` at most every 12 h on the home screen and
+offer the update with the same notes; Settings → "Check for updates" checks immediately. Android always
+asks the user to confirm the install, and the first time to allow installs from this app.

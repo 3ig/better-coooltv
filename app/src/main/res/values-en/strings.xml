@@ -107,4 +107,18 @@
     <string name="color_rose">Rose</string>
     <string name="color_silver">Silver</string>
     <string name="hint_menu_right">▶ Menu &amp; categories</string>
+    <string name="update_title">Version %1$s is available</string>
+    <string name="update_current">Installed: %1$s</string>
+    <string name="update_now">Update</string>
+    <string name="update_later">Later</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_installing">Confirm the install on screen</string>
+    <string name="update_failed">Update failed</string>
+    <string name="update_allow">Allow installs from this app, then press Update again</string>
+    <string name="settings_updates">Updates</string>
+    <string name="settings_check_updates">Check for updates</string>
+    <string name="settings_checking">Checking…</string>
+    <string name="settings_up_to_date">You're up to date</string>
+    <string name="settings_updates_dev">Release build only</string>
+    <string name="settings_update_error">Couldn't reach GitHub</string>
 </resources>

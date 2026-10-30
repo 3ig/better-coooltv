@@ -13,6 +13,7 @@ import dev.bettercoool.tv.data.DeviceEvents
 import dev.bettercoool.tv.data.DeviceInfo
 import dev.bettercoool.tv.data.EpgStore
 import dev.bettercoool.tv.data.SessionStore
+import dev.bettercoool.tv.data.Updater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -42,4 +43,5 @@ class AppGraph(context: Context) {
     val catalog = Catalog(api, session)
     val epg = EpgStore(api, context.cacheDir)
     val events = DeviceEvents(api, session, catalog, epg, appScope)
+    val updater = Updater(context)
 }

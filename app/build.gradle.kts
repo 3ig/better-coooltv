@@ -16,6 +16,8 @@ android {
         // CI passes -PappVersionCode / -PappVersionName so every build can install over the previous one.
         versionCode = providers.gradleProperty("appVersionCode").orNull?.toInt() ?: 1
         versionName = providers.gradleProperty("appVersionName").orNull ?: "0.1.0"
+        // GitHub repo the in-app updater checks for new releases.
+        buildConfigField("String", "UPDATE_REPO", "\"3ig/better-coooltv\"")
     }
 
     // Release key lives outside the repo; its location and passwords come from ~/.gradle/gradle.properties.
