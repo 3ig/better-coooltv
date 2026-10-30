@@ -15,7 +15,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -62,7 +64,7 @@ fun minuteClock(): Long {
 }
 
 @Composable
-fun Badge(text: String, color: Color = Palette.Accent, textColor: Color = Color.White) {
+fun Badge(text: String, color: Color = Palette.Accent, textColor: Color = Palette.OnAccent) {
     Box(Modifier.background(color, RoundedCornerShape(4.dp)).padding(horizontal = 5.dp, vertical = 1.dp)) {
         Txt(text, Type.Label, color = textColor)
     }
@@ -70,9 +72,15 @@ fun Badge(text: String, color: Color = Palette.Accent, textColor: Color = Color.
 
 @Composable
 fun ProgressBar(fraction: Float, modifier: Modifier = Modifier) {
-    Box(modifier.height(3.dp).clip(RoundedCornerShape(2.dp)).background(Palette.SurfaceHigh)) {
-        Box(Modifier.fillMaxWidth(fraction.coerceIn(0f, 1f)).height(3.dp).background(Palette.Accent))
-    }
+    // Two rounded rects in one draw call; no clip (clip paths are slow on TV GPUs and this is in every row).
+    val f = fraction.coerceIn(0f, 1f)
+    Spacer(
+        modifier.height(3.dp).drawBehind {
+            val r = CornerRadius(size.height / 2)
+            drawRoundRect(Palette.SurfaceHigh, cornerRadius = r)
+            if (f > 0f) drawRoundRect(Palette.Accent, size = Size(size.width * f, size.height), cornerRadius = r)
+        },
+    )
 }
 
 /** "Now" with time range + progress, optional description, then "Next". */

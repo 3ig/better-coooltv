@@ -5,6 +5,7 @@ import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,6 +37,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
@@ -67,6 +72,7 @@ import dev.bettercoool.tv.data.Capabilities
 import dev.bettercoool.tv.data.Channel
 import dev.bettercoool.tv.data.PlaybackSession
 import dev.bettercoool.tv.ui.common.Badge
+import dev.bettercoool.tv.ui.common.ReplayPill
 import dev.bettercoool.tv.ui.common.NowNext
 import dev.bettercoool.tv.ui.common.NumberEntry
 import dev.bettercoool.tv.ui.common.ProgressBar
@@ -85,6 +91,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private const val SEEK_STEP = 30_000L
+private const val LIVE_LATENCY = 15_000L // typical HLS distance from real time
 private const val ARCHIVE_DEPTH = 7L * 24 * 60 * 60_000L
 private const val IDLE_AFTER = 4L * 60 * 60_000L // same as the original
 
@@ -162,6 +169,11 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
     var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
     var tracks by remember { mutableStateOf(Tracks.EMPTY) }
     var menuOpen by remember { mutableStateOf(false) }
+    var listOpen by remember { mutableStateOf(false) }
+    var listStart by remember { mutableIntStateOf(0) }
+    var guideStart by remember { mutableIntStateOf(0) }
+    var notice by remember { mutableStateOf<Int?>(null) } // transient one-line hint in the banner
+    var okLongPressed by remember { mutableStateOf(false) }
     var favTick by remember { mutableIntStateOf(0) }
     var pictureMode by remember { mutableIntStateOf(graph.session.pictureMode) }
     var lastInput by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -174,7 +186,9 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
     fun position(): Long = when {
         paused -> pausedAt
         fromTime != null -> clock.position()
-        else -> System.currentTimeMillis() - player.currentLiveOffset.let { if (it == C.TIME_UNSET) 0 else it }
+        // ExoPlayer's live offset depends on the stream's clock matching the TV's; on these streams it can be
+        // off by tens of seconds (even negative), so only trust plausible values and assume typical HLS latency otherwise.
+        else -> System.currentTimeMillis() - player.currentLiveOffset.let { if (it in 3_000L..90_000L) it else LIVE_LATENCY }
     }
 
     DisposableEffect(player) {
@@ -284,7 +298,7 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         val now = System.currentTimeMillis()
         val target = (position() + pendingSeek).coerceAtLeast(now - ARCHIVE_DEPTH)
         pendingSeek = 0
-        fromTime = if (target >= now - 20_000) null else target
+        fromTime = if (target >= now - LIVE_LATENCY / 2) null else target
         bannerKey++
     }
 
@@ -344,10 +358,17 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
             delay(10 * 60_000)
         }
     }
-    LaunchedEffect(guideOpen, menuOpen) { if (!guideOpen && !menuOpen) focus.requestFocusSoon() }
+    val overlayOpen = guideOpen || menuOpen || listOpen
+    LaunchedEffect(overlayOpen) { if (!overlayOpen) focus.requestFocusSoon() }
+    LaunchedEffect(notice) {
+        if (notice != null) {
+            delay(3_500)
+            notice = null
+        }
+    }
 
     BackHandler(enabled = menuOpen) { menuOpen = false }
-    BackHandler(enabled = !guideOpen && !menuOpen) {
+    BackHandler(enabled = !overlayOpen) {
         when {
             digits.isNotEmpty() -> digits = ""
             fromTime != null || paused -> {
@@ -400,22 +421,55 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
                         return@onPreviewKeyEvent true
                     }
                 }
+                // A long-press OK opened an overlay; its release must not click the overlay's first item.
+                if (okLongPressed && isOk(e.nativeKeyEvent.keyCode) && e.type == KeyEventType.KeyUp) {
+                    okLongPressed = false
+                    return@onPreviewKeyEvent true
+                }
                 false
             }
             .focusRequester(focus)
             .focusable()
             .onKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || guideOpen || menuOpen) return@onKeyEvent false
+                if (overlayOpen) return@onKeyEvent false
                 val code = event.nativeKeyEvent.keyCode
+                // OK acts on release (so the release can't land on the overlay it opens);
+                // holding OK opens the options — for remotes without a MENU key.
+                if (isOk(code)) {
+                    when {
+                        event.type == KeyEventType.KeyDown && event.nativeKeyEvent.repeatCount == 1 && error == null -> {
+                            okLongPressed = true
+                            menuOpen = true
+                        }
+                        event.type == KeyEventType.KeyUp && !okLongPressed -> when {
+                            error != null -> {
+                                if (fromTime != null) fromTime = clock.position()
+                                retry++
+                            }
+                            else -> {
+                                listStart = index
+                                listOpen = true
+                            }
+                        }
+                    }
+                    return@onKeyEvent true
+                }
+                if (event.type != KeyEventType.KeyDown) return@onKeyEvent false
                 digitFor(code)?.let { d ->
                     if (digits.length < 4) digits += d
                     return@onKeyEvent true
                 }
                 when (code) {
-                    AndroidKeyEvent.KEYCODE_DPAD_UP, AndroidKeyEvent.KEYCODE_CHANNEL_UP -> zap(+1)
-                    AndroidKeyEvent.KEYCODE_DPAD_DOWN, AndroidKeyEvent.KEYCODE_CHANNEL_DOWN -> zap(-1)
+                    // Dedicated channel keys zap; the D-pad never changes channel by itself.
+                    AndroidKeyEvent.KEYCODE_CHANNEL_UP, AndroidKeyEvent.KEYCODE_PAGE_UP -> zap(+1)
+                    AndroidKeyEvent.KEYCODE_CHANNEL_DOWN, AndroidKeyEvent.KEYCODE_PAGE_DOWN -> zap(-1)
+                    AndroidKeyEvent.KEYCODE_DPAD_UP, AndroidKeyEvent.KEYCODE_DPAD_DOWN -> {
+                        val step = if (code == AndroidKeyEvent.KEYCODE_DPAD_UP) -1 else 1
+                        listStart = (index + step).coerceIn(0, list.lastIndex)
+                        listOpen = true
+                    }
                     AndroidKeyEvent.KEYCODE_DPAD_LEFT, AndroidKeyEvent.KEYCODE_MEDIA_REWIND -> {
-                        if (channel.hasTimeshift) pendingSeek -= SEEK_STEP
+                        if (channel.hasTimeshift) pendingSeek -= SEEK_STEP else notice = R.string.replay_unavailable
                         bannerKey++
                     }
                     AndroidKeyEvent.KEYCODE_DPAD_RIGHT, AndroidKeyEvent.KEYCODE_MEDIA_FAST_FORWARD -> {
@@ -425,16 +479,12 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
                     AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, AndroidKeyEvent.KEYCODE_SPACE -> togglePause()
                     AndroidKeyEvent.KEYCODE_MEDIA_PAUSE -> if (!paused) togglePause()
                     AndroidKeyEvent.KEYCODE_MEDIA_PLAY -> if (paused) togglePause()
-                    AndroidKeyEvent.KEYCODE_GUIDE -> guideOpen = true
-                    AndroidKeyEvent.KEYCODE_MENU, AndroidKeyEvent.KEYCODE_CAPTIONS, AndroidKeyEvent.KEYCODE_SETTINGS -> menuOpen = true
-                    AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER, AndroidKeyEvent.KEYCODE_INFO -> when {
-                        error != null -> {
-                            if (fromTime != null) fromTime = clock.position()
-                            retry++
-                        }
-                        showBanner -> guideOpen = true
-                        else -> bannerKey++
+                    AndroidKeyEvent.KEYCODE_GUIDE -> {
+                        guideStart = index
+                        guideOpen = true
                     }
+                    AndroidKeyEvent.KEYCODE_MENU, AndroidKeyEvent.KEYCODE_CAPTIONS, AndroidKeyEvent.KEYCODE_SETTINGS -> menuOpen = true
+                    AndroidKeyEvent.KEYCODE_INFO -> bannerKey++
                     else -> return@onKeyEvent false
                 }
                 true
@@ -442,12 +492,12 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
     ) {
         VideoSurface(player, aspect, pictureMode)
 
-        val bannerShown = (showBanner || paused || pendingSeek != 0L) && error == null && !guideOpen
+        val bannerShown = (showBanner || paused || pendingSeek != 0L || notice != null) && error == null && !overlayOpen
         Subtitles(cues, Modifier.align(Alignment.BottomCenter).padding(bottom = if (bannerShown) 200.dp else 56.dp))
 
         error?.let { ErrorCard(channel, it, Modifier.align(Alignment.Center)) }
 
-        if (pendingSeek != 0L && !guideOpen) {
+        if (pendingSeek != 0L && !overlayOpen) {
             val target = (position() + pendingSeek) / 10_000
             key(target) {
                 Thumbnail(
@@ -458,15 +508,42 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         }
 
         if (bannerShown) {
-            ChannelBanner(
+            InfoBar(
                 graph = graph,
                 channel = channel,
                 replay = fromTime != null,
                 paused = paused,
                 pendingSeek = pendingSeek,
+                notice = notice,
                 position = ::position,
                 info = streamInfo,
                 modifier = Modifier.align(Alignment.BottomStart),
+            )
+        } else if ((fromTime != null || paused) && error == null && !overlayOpen) {
+            // Never leave it ambiguous that we're behind live.
+            BehindLivePill(position = ::position, paused = paused, modifier = Modifier.align(Alignment.TopEnd).padding(32.dp))
+        }
+
+        if (listOpen) {
+            ChannelListOverlay(
+                graph = graph,
+                channels = list,
+                playingIndex = index,
+                startIndex = listStart,
+                onPick = { i ->
+                    listOpen = false
+                    if (i != index || fromTime != null) {
+                        index = i
+                        fromTime = null
+                    }
+                    bannerKey++
+                },
+                onGuide = { i ->
+                    listOpen = false
+                    guideStart = i
+                    guideOpen = true
+                },
+                onClose = { listOpen = false },
             )
         }
 
@@ -479,7 +556,8 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
             Guide(
                 graph = graph,
                 channels = list,
-                startIndex = index,
+                startIndex = guideStart,
+                translucent = true,
                 onPick = { i, from ->
                     index = i
                     fromTime = from
@@ -548,28 +626,46 @@ data class StreamInfo(val format: Format? = null, val decoder: String? = null, v
 
 private val secondsClock = DateTimeFormatter.ofPattern("HH:mm:ss").withZone(ZoneId.systemDefault())
 
+private fun isOk(code: Int) = code == AndroidKeyEvent.KEYCODE_DPAD_CENTER || code == AndroidKeyEvent.KEYCODE_ENTER
+
+/** "12:30" or "1:02:03". */
+private fun formatSpan(ms: Long): String {
+    val t = (ms / 1000).coerceAtLeast(0)
+    return if (t >= 3600) "%d:%02d:%02d".format(t / 3600, t / 60 % 60, t % 60) else "%d:%02d".format(t / 60, t % 60)
+}
+
+/**
+ * Bottom bar. Live: channel, now/next, what the keys do. Timeshift (replay, paused or seeking):
+ * a transport bar showing the programme, what's available up to live, where the playhead is
+ * (or will land after a pending seek) and how far behind live that is.
+ */
 @Composable
-private fun ChannelBanner(
+private fun InfoBar(
     graph: AppGraph,
     channel: Channel,
     replay: Boolean,
     paused: Boolean,
     pendingSeek: Long,
+    @StringRes notice: Int?,
     position: () -> Long,
     info: StreamInfo?,
     modifier: Modifier,
 ) {
     val revision by graph.epg.revision.collectAsState()
     val minute = minuteClock()
-    // Second-level ticking only while the banner shows replay/pause state.
-    val pos by produceState(position(), replay, paused) {
-        while (replay || paused) {
+    val timeshift = replay || paused || pendingSeek != 0L
+    // Sub-second ticking only while the transport bar is showing.
+    val pos by produceState(position(), timeshift) {
+        while (timeshift) {
             value = position()
-            delay(1_000)
+            delay(500)
         }
         value = position()
     }
-    Box(modifier.fillMaxWidth().background(Palette.Scrim).padding(horizontal = 56.dp, vertical = 28.dp)) {
+    val target = pos + pendingSeek
+    val behind = System.currentTimeMillis() - target
+
+    Column(modifier.fillMaxWidth().background(Palette.Scrim).padding(horizontal = 56.dp, vertical = 24.dp)) {
         Row(verticalAlignment = Alignment.Top) {
             Box(
                 Modifier.size(width = 112.dp, height = 63.dp).background(Palette.SurfaceHigh, RoundedCornerShape(10.dp)),
@@ -586,31 +682,22 @@ private fun ChannelBanner(
                         Badge("4K")
                     }
                     Spacer(Modifier.width(8.dp))
-                    if (replay) Badge(stringResource(R.string.catchup), color = Palette.SurfaceHigh)
-                    else Badge(stringResource(R.string.live), color = Palette.SurfaceHigh)
+                    when {
+                        timeshift -> ReplayPill(stringResource(R.string.replay_behind, formatSpan(behind)), filled = true)
+                        else -> Badge(stringResource(R.string.live), color = Palette.Danger, textColor = Palette.Text)
+                    }
+                    if (!timeshift && channel.hasTimeshift) {
+                        Spacer(Modifier.width(8.dp))
+                        ReplayPill(stringResource(R.string.replay_badge))
+                    }
                     if (paused) {
                         Spacer(Modifier.width(8.dp))
-                        Badge(stringResource(R.string.paused))
+                        Badge(stringResource(R.string.paused), color = Palette.Text, textColor = Palette.OnAccent)
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                if (replay || paused) {
-                    val p = remember(channel.id, revision, pos / 60_000) { graph.epg.programmeAt(channel.id, pos) }
-                    if (p != null) {
-                        Txt(p.name, Type.Title, maxLines = 1)
-                        Spacer(Modifier.height(8.dp))
-                        ProgressBar((pos - p.startTime).toFloat() / (p.endTime - p.startTime).coerceAtLeast(1), Modifier.width(420.dp))
-                        Spacer(Modifier.height(6.dp))
-                    }
-                    Row {
-                        Txt(secondsClock.format(Instant.ofEpochMilli(pos)), Type.Label, color = Palette.Text)
-                        if (p != null) Txt("  /  ${hhmm(p.startTime)} – ${hhmm(p.endTime)}", Type.Label)
-                        if (pendingSeek != 0L) {
-                            Spacer(Modifier.width(16.dp))
-                            val s = pendingSeek / 1000
-                            Txt("${if (s > 0) "+" else "−"}${kotlin.math.abs(s) / 60}:%02d".format(kotlin.math.abs(s) % 60), Type.Label, color = Palette.Accent)
-                        }
-                    }
+                if (timeshift) {
+                    TransportBar(graph, channel, revision, target)
                 } else {
                     val (now, next) = remember(channel.id, revision, minute) { graph.epg.nowNext(channel.id, minute) }
                     NowNext(now, next, minute)
@@ -618,10 +705,78 @@ private fun ChannelBanner(
             }
             if (info != null) {
                 Spacer(Modifier.width(24.dp))
-                Txt(info.describe(), Type.Label, Modifier.widthIn(max = 260.dp), color = Palette.TextFaint)
+                Txt(info.describe(), Type.Label, Modifier.widthIn(max = 240.dp), color = Palette.TextFaint)
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(Modifier.padding(start = 136.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (notice != null) {
+                Txt(stringResource(notice), Type.Label, color = Palette.Danger)
+                Spacer(Modifier.width(24.dp))
+            }
+            val hints = if (timeshift) {
+                listOf(R.string.hint_seek, R.string.hint_pause, R.string.hint_back_live)
+            } else {
+                listOfNotNull(
+                    R.string.hint_rewind.takeIf { channel.hasTimeshift },
+                    R.string.hint_channels, R.string.hint_guide, R.string.hint_menu,
+                )
+            }
+            hints.forEach {
+                Txt(stringResource(it), Type.Label, color = Palette.TextFaint)
+                Spacer(Modifier.width(22.dp))
             }
         }
     }
+}
+
+@Composable
+private fun TransportBar(graph: AppGraph, channel: Channel, revision: Int, target: Long) {
+    val now = System.currentTimeMillis()
+    val p = remember(channel.id, revision, target / 60_000) { graph.epg.programmeAt(channel.id, target) }
+    // Programme span, or a 1 h window ending at live when there's no guide data.
+    val from = p?.startTime ?: (now - 60 * 60_000)
+    val to = p?.endTime ?: now
+    val span = (to - from).coerceAtLeast(1).toFloat()
+    val played = ((target - from) / span).coerceIn(0f, 1f)
+    val available = ((now - from) / span).coerceIn(0f, 1f)
+
+    if (p != null) {
+        Txt(p.name, Type.Title, maxLines = 1)
+        Spacer(Modifier.height(10.dp))
+    }
+    // One canvas so track, available range, played part and playhead share exact coordinates.
+    Canvas(Modifier.width(640.dp).height(16.dp)) {
+        val h = 4.dp.toPx()
+        val y = size.height / 2
+        val r = CornerRadius(h / 2)
+        drawRoundRect(Palette.SurfaceHigh, Offset(0f, y - h / 2), Size(size.width, h), r)
+        drawRoundRect(Palette.TextFaint, Offset(0f, y - h / 2), Size(size.width * available, h), r)
+        drawRoundRect(Palette.Accent, Offset(0f, y - h / 2), Size(size.width * played, h), r)
+        drawCircle(Palette.Accent, 7.dp.toPx(), Offset(size.width * played, y))
+    }
+    Spacer(Modifier.height(6.dp))
+    Row(Modifier.width(640.dp)) {
+        Txt(secondsClock.format(Instant.ofEpochMilli(target)), Type.Label, color = Palette.Text)
+        Spacer(Modifier.weight(1f))
+        Txt("${hhmm(from)} – ${hhmm(to)}", Type.Label)
+    }
+}
+
+/** Shown in the corner while behind live and the bar is hidden. */
+@Composable
+private fun BehindLivePill(position: () -> Long, paused: Boolean, modifier: Modifier) {
+    val pos by produceState(position()) {
+        while (true) {
+            value = position()
+            delay(1_000)
+        }
+    }
+    ReplayPill(
+        if (paused) stringResource(R.string.paused)
+        else stringResource(R.string.replay_behind, formatSpan(System.currentTimeMillis() - pos)),
+        modifier.background(Palette.Scrim, RoundedCornerShape(50)),
+    )
 }
 
 @Composable

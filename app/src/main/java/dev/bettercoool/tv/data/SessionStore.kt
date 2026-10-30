@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.SharedFlow
 
 /** Tokens and small per-device preferences. Keys mirror the original app's storage keys. */
 class SessionStore(context: Context) {
+    private val appContext = context.applicationContext
     private val prefs = context.getSharedPreferences("session", Context.MODE_PRIVATE)
 
     var accessToken: String?
@@ -42,6 +43,11 @@ class SessionStore(context: Context) {
         return added
     }
 
+    /** Key of the chosen main-colour preset (see AccentPresets), or null for the default. */
+    var accentKey: String?
+        get() = prefs.getString("accent", null)
+        set(value) = prefs.edit().putString("accent", value).apply()
+
     /** 0 = fit (letterbox), 1 = fill (crop), 2 = stretch. */
     var pictureMode: Int
         get() = prefs.getInt("picture_mode", 0)
@@ -62,6 +68,9 @@ class SessionStore(context: Context) {
 
     fun setResumeAt(channelId: String, ms: Long) = prefs.edit().putLong("resume_$channelId", ms).apply()
 
+    /** Language for server messages: the app's effective UI language ("bg" or "en"). */
+    val language: String get() = dev.bettercoool.tv.AppLocale.effective(appContext)
+
     val isPaired: Boolean get() = refreshToken != null && serverDeviceId != null
 
     private val _loggedOut = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
@@ -72,7 +81,10 @@ class SessionStore(context: Context) {
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        // Keep the user's language and colour choices across sign-out.
+        val pinned = prefs.getString("language", null)
+        val accent = prefs.getString("accent", null)
+        prefs.edit().clear().putString("language", pinned).putString("accent", accent).apply()
         _loggedOut.tryEmit(Unit)
     }
 }

@@ -5,6 +5,8 @@ import android.content.Context
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
+import dev.bettercoool.tv.ui.theme.AccentPresets
+import dev.bettercoool.tv.ui.theme.Palette
 import dev.bettercoool.tv.data.Catalog
 import dev.bettercoool.tv.data.CooolApi
 import dev.bettercoool.tv.data.DeviceEvents
@@ -22,6 +24,7 @@ class CooolApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         graph = AppGraph(this)
+        AccentPresets.firstOrNull { it.key == graph.session.accentKey }?.let { Palette.Accent = it.color }
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

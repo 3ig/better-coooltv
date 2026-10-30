@@ -36,6 +36,14 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-dev"
         }
+        // Fast-building, non-debuggable build for measuring performance on a real TV. It shares the
+        // dev build's app ID and signature, so it installs over it and keeps the pairing.
+        create("profile") {
+            initWith(getByName("debug"))
+            isDebuggable = false
+            isProfileable = true
+            matchingFallbacks += listOf("debug")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

@@ -42,7 +42,7 @@ class CooolApi(private val store: SessionStore) {
     private val plainClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
-        .addInterceptor(DefaultHeaders)
+        .addInterceptor(DefaultHeaders())
         .build()
 
     private val client: OkHttpClient = plainClient.newBuilder()
@@ -195,11 +195,12 @@ class CooolApi(private val store: SessionStore) {
     private object NoAuth
     private object AuthRetried
 
-    private object DefaultHeaders : Interceptor {
+    /** Server error messages come back in the app's language (bg or en). */
+    private inner class DefaultHeaders : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response = chain.proceed(
             chain.request().newBuilder()
                 .header("Accept", chain.request().header("Accept") ?: "application/json")
-                .header("Accept-Language", "bg")
+                .header("Accept-Language", store.language)
                 .build()
         )
     }

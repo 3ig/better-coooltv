@@ -97,7 +97,7 @@ fun PinDialog(profile: Profile, onSuccess: () -> Unit, onCancel: () -> Unit) {
                 }
             }
             Spacer(Modifier.height(10.dp))
-            Txt(if (wrong) stringResource(R.string.pin_wrong) else " ", Type.Label, color = Palette.Accent)
+            Txt(if (wrong) stringResource(R.string.pin_wrong) else " ", Type.Label, color = Palette.Danger)
             Spacer(Modifier.height(10.dp))
             val keys = listOf("123", "456", "789", "⌫0")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

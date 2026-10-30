@@ -52,6 +52,11 @@ import dev.bettercoool.tv.R
 import dev.bettercoool.tv.data.Channel
 import dev.bettercoool.tv.data.EpgEntry
 import dev.bettercoool.tv.ui.common.Badge
+import dev.bettercoool.tv.ui.common.ReplayIcon
+import dev.bettercoool.tv.ui.common.ReplayVector
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import dev.bettercoool.tv.ui.common.NumberEntry
 import dev.bettercoool.tv.ui.common.digitFor
 import dev.bettercoool.tv.ui.common.hhmm
@@ -96,6 +101,8 @@ fun Guide(
     modifier: Modifier = Modifier,
     /** Only available inside the player, where a playback session exists. */
     thumbnail: ((Channel, Long, Boolean) -> String?)? = null,
+    /** Over playing video: let the picture show through. */
+    translucent: Boolean = false,
 ) {
     val openedAt = remember { System.currentTimeMillis() }
     var row by remember { mutableIntStateOf(startIndex.coerceIn(0, (channels.size - 1).coerceAtLeast(0))) }
@@ -123,7 +130,12 @@ fun Guide(
     }
 
     fun moveRow(delta: Int) {
-        row = (row + delta).coerceIn(0, channels.lastIndex)
+        // Single steps wrap around (last → first, first → last); page jumps stop at the ends.
+        row = when {
+            delta == 1 && row == channels.lastIndex -> 0
+            delta == -1 && row == 0 -> channels.lastIndex
+            else -> (row + delta).coerceIn(0, channels.lastIndex)
+        }
         keepVisible()
     }
 
@@ -169,7 +181,7 @@ fun Guide(
     Box(
         modifier
             .fillMaxSize()
-            .background(Palette.Background.copy(alpha = 0.96f))
+            .background(Palette.Background.copy(alpha = if (translucent) 0.8f else 1f))
             .onBack { if (digits.isNotEmpty()) digits = "" else onClose() }
             .focusRequester(focus)
             .focusable()
@@ -213,7 +225,7 @@ fun Guide(
             Ruler(windowStart, now, Modifier.fillMaxWidth().height(28.dp))
             Row(Modifier.fillMaxWidth().height(ROW_H * ROWS)) {
                 ChannelColumn(channels, firstRow, row, Modifier.width(CHANNEL_COL))
-                Grid(graph, channels, firstRow, row, focused, windowStart, now, revision, Modifier.weight(1f).fillMaxSize())
+                Grid(graph, channels, firstRow, row, focused, windowStart, now, revision, translucent, Modifier.weight(1f).fillMaxSize())
             }
         }
         if (digits.isNotEmpty()) {
@@ -318,7 +330,11 @@ private fun ChannelColumn(channels: List<Channel>, firstRow: Int, row: Int, modi
                     if (ch.logo != null) AsyncImage(model = ch.logo, contentDescription = null, modifier = Modifier.fillMaxSize())
                 }
                 Spacer(Modifier.width(10.dp))
-                Txt(ch.name, Type.Label, maxLines = 1, color = if (ch.playable) Palette.Text else Palette.TextFaint)
+                Txt(ch.name, Type.Label, Modifier.weight(1f), maxLines = 1, color = if (ch.playable) Palette.Text else Palette.TextFaint)
+                if (ch.hasTimeshift) {
+                    Spacer(Modifier.width(6.dp))
+                    ReplayIcon(12.dp)
+                }
             }
         }
     }
@@ -334,9 +350,13 @@ private fun Grid(
     windowStart: Long,
     now: Long,
     revision: Int,
+    translucent: Boolean,
     modifier: Modifier,
 ) {
+    // Over video, cells are see-through so the picture stays visible behind the grid.
+    val cellAlpha = if (translucent) 0.85f else 1f
     val measurer = rememberTextMeasurer(cacheSize = 96)
+    val replayIcon = rememberVectorPainter(ReplayVector)
     val title = remember { TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium) }
     val time = remember { TextStyle(fontSize = 12.sp) }
     val windowEnd = windowStart + SPAN
@@ -358,7 +378,7 @@ private fun Grid(
 
             if (list.isEmpty()) {
                 drawRoundRect(
-                    if (isRow) Palette.Focus.copy(alpha = 0.25f) else Palette.Surface,
+                    if (isRow) Palette.Focus.copy(alpha = 0.25f) else Palette.Surface.copy(alpha = cellAlpha),
                     Offset(gap, y + gap), Size(size.width - 2 * gap, rowH - 2 * gap), radius,
                 )
                 continue
@@ -372,25 +392,36 @@ private fun Grid(
                 val past = p.endTime <= now
                 val live = p.startTime <= now && now < p.endTime
                 val replayable = past && ch.hasTimeshift && ch.includedInPlan
+                // Past programmes you can replay stay readable and carry the replay icon;
+                // past programmes you can't are clearly faded.
                 val fill = when {
                     isFocused -> Palette.Focus
-                    live -> Palette.SurfaceHigh
-                    past -> Palette.Surface.copy(alpha = 0.6f)
-                    else -> Palette.Surface
+                    live -> Palette.SurfaceHigh.copy(alpha = maxOf(cellAlpha, 0.85f))
+                    replayable -> Palette.Surface.copy(alpha = cellAlpha)
+                    past -> Palette.Surface.copy(alpha = 0.35f * cellAlpha)
+                    else -> Palette.Surface.copy(alpha = cellAlpha)
                 }
                 drawRoundRect(fill, Offset(x0, y + gap), Size(w, rowH - 2 * gap), radius)
-                if (replayable && !isFocused) {
-                    drawRect(Palette.Accent.copy(alpha = 0.8f), Offset(x0, y + rowH - gap - 3.dp.toPx()), Size(w, 2.dp.toPx()))
+                val iconR = 6.dp.toPx()
+                val showIcon = replayable && w > 3 * pad + 2 * iconR
+                if (showIcon) {
+                    translate(x1 - pad - 2 * iconR, y + rowH / 2 - iconR) {
+                        with(replayIcon) {
+                            draw(Size(2 * iconR, 2 * iconR), colorFilter = ColorFilter.tint(if (isFocused) Palette.OnFocus else Palette.Accent))
+                        }
+                    }
                 }
                 if (w > 3 * pad) {
                     val color = when {
                         isFocused -> Palette.OnFocus
-                        past -> Palette.TextDim
+                        replayable -> Palette.Text
+                        past -> Palette.TextFaint
                         else -> Palette.Text
                     }
                     // Measure then draw with an explicit colour: the measurer's cache ignores colour,
                     // so drawText(text, style) can reuse a layout carrying a stale colour.
-                    val cell = Constraints(maxWidth = (w - 2 * pad).toInt(), maxHeight = 20.dp.roundToPx())
+                    val textW = w - 2 * pad - if (showIcon) 2 * iconR + 6.dp.toPx() else 0f
+                    val cell = Constraints(maxWidth = textW.toInt().coerceAtLeast(1), maxHeight = 20.dp.roundToPx())
                     drawText(
                         measurer.measure(p.name, title, TextOverflow.Ellipsis, maxLines = 1, constraints = cell),
                         color = color,

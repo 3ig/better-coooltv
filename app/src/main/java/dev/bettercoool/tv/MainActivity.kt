@@ -1,5 +1,11 @@
 package dev.bettercoool.tv
 
+import android.content.Context
+import android.content.Intent
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.KeyEvent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,13 +25,55 @@ import dev.bettercoool.tv.ui.home.HomeScreen
 import dev.bettercoool.tv.ui.pairing.PairingScreen
 import dev.bettercoool.tv.ui.player.PlayerScreen
 import dev.bettercoool.tv.ui.settings.SettingsScreen
+import dev.bettercoool.tv.ui.theme.KeyRepeat
 import dev.bettercoool.tv.ui.theme.Palette
 
 class MainActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val graph = (application as CooolApp).graph
         setContent { AppRoot(graph) }
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP || event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN) {
+            KeyRepeat.active = event.action == KeyEvent.ACTION_DOWN && event.repeatCount > 0
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        perfScroll(intent)
+    }
+
+    /**
+     * Dev/profile builds only: `am start ... --ei perf_scroll N` holds Down for N repeats, then Up for N
+     * (50 ms repeat, like a held remote key) from inside the app, so frame timing can be measured
+     * without adb's per-key process launches stealing the CPU.
+     */
+    private fun perfScroll(intent: Intent) {
+        if (BuildConfig.BUILD_TYPE == "release") return
+        val n = intent.getIntExtra("perf_scroll", 0)
+        if (n <= 0) return
+        val handler = Handler(Looper.getMainLooper())
+        listOf(KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_UP).forEachIndexed { pass, code ->
+            val start = 50L * (n + 2) * pass
+            for (i in 0 until n) {
+                handler.postDelayed({
+                    val t = SystemClock.uptimeMillis()
+                    dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_DOWN, code, i))
+                }, start + 50L * i)
+            }
+            handler.postDelayed({
+                val t = SystemClock.uptimeMillis()
+                dispatchKeyEvent(KeyEvent(t, t, KeyEvent.ACTION_UP, code, 0))
+            }, start + 50L * n)
+        }
     }
 
     override fun onStart() {
@@ -56,7 +104,8 @@ private fun AppRoot(graph: AppGraph) {
         graph.session.loggedOut.collect { screen = Screen.Pairing }
     }
 
-    Box(Modifier.fillMaxSize().background(Palette.Background)) {
+    // No background here: the window background is already this colour (avoids a second full-screen fill per frame).
+    Box(Modifier.fillMaxSize()) {
         when (val s = screen) {
             Screen.Pairing -> PairingScreen(graph, onPaired = {
                 graph.events.start()
