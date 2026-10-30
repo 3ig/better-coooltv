@@ -33,6 +33,8 @@ import dev.bettercoool.tv.data.Profile
 import dev.bettercoool.tv.ui.common.digitFor
 import dev.bettercoool.tv.ui.theme.FocusCard
 import dev.bettercoool.tv.ui.theme.Palette
+import dev.bettercoool.tv.ui.theme.onBack
+import dev.bettercoool.tv.ui.theme.requestFocusSoon
 import dev.bettercoool.tv.ui.theme.Txt
 import dev.bettercoool.tv.ui.theme.Type
 import kotlinx.coroutines.delay
@@ -47,7 +49,7 @@ fun PinDialog(profile: Profile, onSuccess: () -> Unit, onCancel: () -> Unit) {
     var wrong by remember { mutableStateOf(false) }
     val first = remember { FocusRequester() }
 
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    LaunchedEffect(Unit) { first.requestFocusSoon() }
     BackHandler(onBack = onCancel)
 
     fun type(c: Char) {
@@ -67,7 +69,7 @@ fun PinDialog(profile: Profile, onSuccess: () -> Unit, onCancel: () -> Unit) {
     }
 
     Box(
-        Modifier.fillMaxSize().background(Palette.Scrim).onPreviewKeyEvent { e ->
+        Modifier.fillMaxSize().background(Palette.Scrim).onBack(onCancel).onPreviewKeyEvent { e ->
             val d = digitFor(e.nativeKeyEvent.keyCode)
             if (d != null && e.type == KeyEventType.KeyDown) {
                 type(d)

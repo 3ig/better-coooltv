@@ -50,7 +50,11 @@ Then: full guide grid (one focus node + one Canvas; opens from home or as an ove
 
 Release build (R8, debug-signed for now) on the Philips TV: **1.9 MB APK** (original 36 MB), **~0.3 s cold start**, **~70 MB PSS** during HD playback.
 
-Next: real release signing; channel preview thumbnails (`dirname(stream)/YYYY/MM/DD/HH/mm/ss.jpg`); favourites; audio/subtitle track selection; resume position for catch-up; idle-timeout prompt; settings (language, clear cache, log out).
+Then: player menu (MENU key: favourite, audio, subtitles, Fit/Fill/Stretch), correct aspect ratio (was stretched), own subtitle renderer (text + DVB bitmap cues), per-channel track memory, favourites (MENU on home, ★ filter), replay resume ("OK · Resume from …" in the guide), 4 h "Still watching?" prompt that ends the server session, DVR thumbnails in the guide overlay and seek preview (only while a playback session exists), settings screen (device, 4K support, reload guide, sign out), Back-to-top in the channel list.
+
+Lessons: Compose consumes the first Back on a focused child to clear focus, so every overlay handles Back itself (`Modifier.onBack`); initial focus in lazy lists needs a few frames of retry (`requestFocusSoon`).
+
+Next: real release signing; multi-audio verification on a channel that has it; optional channel-change preview thumbnails on home (needs a session — weigh against MAX_ACTIVE_SESSIONS).
 
 ## Open questions (answered — see re/live_api_notes.md)
 - `startTime`/`endTime` format, channel `id` type, whether logo URLs are absolute.

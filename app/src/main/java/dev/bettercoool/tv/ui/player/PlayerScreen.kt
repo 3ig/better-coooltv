@@ -2,7 +2,6 @@ package dev.bettercoool.tv.ui.player
 
 import android.os.SystemClock
 import android.view.KeyEvent as AndroidKeyEvent
-import android.view.SurfaceView
 import androidx.activity.compose.BackHandler
 import androidx.annotation.OptIn
 import androidx.annotation.StringRes
@@ -31,6 +30,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -38,17 +38,22 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DecoderReuseEvaluation
 import androidx.media3.exoplayer.DefaultLoadControl
@@ -70,6 +75,7 @@ import dev.bettercoool.tv.ui.common.hhmm
 import dev.bettercoool.tv.ui.common.minuteClock
 import dev.bettercoool.tv.ui.guide.Guide
 import dev.bettercoool.tv.ui.theme.Palette
+import dev.bettercoool.tv.ui.theme.requestFocusSoon
 import dev.bettercoool.tv.ui.theme.Txt
 import dev.bettercoool.tv.ui.theme.Type
 import kotlinx.coroutines.CancellationException
@@ -80,6 +86,7 @@ import java.time.format.DateTimeFormatter
 
 private const val SEEK_STEP = 30_000L
 private const val ARCHIVE_DEPTH = 7L * 24 * 60 * 60_000L
+private const val IDLE_AFTER = 4L * 60 * 60_000L // same as the original
 
 /** What went wrong, resolved to text at display time. Server messages are already localized. */
 private data class PlayError(@StringRes val fallback: Int, val serverMessage: String? = null, val detail: String? = null)
@@ -151,6 +158,15 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
     var error by remember { mutableStateOf<PlayError?>(null) }
     var streamInfo by remember { mutableStateOf<StreamInfo?>(null) }
     var digits by remember { mutableStateOf("") }
+    var aspect by remember { mutableStateOf(0f) }
+    var cues by remember { mutableStateOf<List<Cue>>(emptyList()) }
+    var tracks by remember { mutableStateOf(Tracks.EMPTY) }
+    var menuOpen by remember { mutableStateOf(false) }
+    var favTick by remember { mutableIntStateOf(0) }
+    var pictureMode by remember { mutableIntStateOf(graph.session.pictureMode) }
+    var lastInput by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
+    var idleCountdown by remember { mutableIntStateOf(0) } // > 0 while asking "still watching?"
+    val profileId = graph.session.currentProfile
     val focus = remember { FocusRequester() }
     val channel = list[index]
 
@@ -164,6 +180,18 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) = clock.playing(isPlaying)
+
+            override fun onVideoSizeChanged(size: VideoSize) {
+                if (size.height > 0) aspect = size.width * size.pixelWidthHeightRatio / size.height
+            }
+
+            override fun onCues(cueGroup: CueGroup) {
+                cues = cueGroup.cues
+            }
+
+            override fun onTracksChanged(t: Tracks) {
+                tracks = t
+            }
 
             override fun onPlayerError(e: PlaybackException) {
                 val current = list[index]
@@ -201,6 +229,7 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         started++
         onStopOrDispose {
             if (fromTime != null || paused) fromTime = position()
+            fromTime?.let { graph.session.setResumeAt(channel.id, it) }
             player.stop()
             session.end()
         }
@@ -211,7 +240,16 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         error = null
         streamInfo = null
         paused = false
+        cues = emptyList()
         clock.reset(fromTime ?: 0)
+        // Per-channel audio/subtitle language; subtitles stay off unless chosen.
+        val (audioLang, textLang) = profileId?.let { graph.session.trackPrefs(it, channel.id) } ?: (null to null)
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverrides()
+            .setPreferredAudioLanguage(audioLang)
+            .setPreferredTextLanguage(textLang?.takeIf { it != "off" })
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, textLang == null || textLang == "off")
+            .build()
         try {
             player.setMediaItem(MediaItem.fromUri(session.streamUrl(channel, fromTime)))
             player.prepare()
@@ -270,6 +308,35 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         digits = ""
     }
 
+    // Remember where we are in a replay so the guide can offer "Resume from …".
+    LaunchedEffect(channel.id, fromTime) {
+        if (fromTime == null) return@LaunchedEffect
+        while (true) {
+            delay(15_000)
+            if (!paused) graph.session.setResumeAt(channel.id, position())
+        }
+    }
+
+    // "Still watching?" after 4 h without a key press; stops playback (and the server session) if unanswered.
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            if (idleCountdown != 0 || error != null || SystemClock.elapsedRealtime() - lastInput < IDLE_AFTER) continue
+            idleCountdown = 60
+            while (idleCountdown > 1) {
+                delay(1_000)
+                if (idleCountdown == 0) break
+                idleCountdown--
+            }
+            if (idleCountdown > 0) {
+                idleCountdown = 0
+                player.stop()
+                session.end()
+                error = PlayError(R.string.idle_stopped)
+            }
+        }
+    }
+
     LaunchedEffect(Unit) { session.keepAlive() }
     LaunchedEffect(Unit) {
         while (true) {
@@ -277,9 +344,10 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
             delay(10 * 60_000)
         }
     }
-    LaunchedEffect(guideOpen) { if (!guideOpen) runCatching { focus.requestFocus() } }
+    LaunchedEffect(guideOpen, menuOpen) { if (!guideOpen && !menuOpen) focus.requestFocusSoon() }
 
-    BackHandler(enabled = !guideOpen) {
+    BackHandler(enabled = menuOpen) { menuOpen = false }
+    BackHandler(enabled = !guideOpen && !menuOpen) {
         when {
             digits.isNotEmpty() -> digits = ""
             fromTime != null || paused -> {
@@ -324,10 +392,20 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onPreviewKeyEvent { e ->
+                if (e.type == KeyEventType.KeyDown) {
+                    lastInput = SystemClock.elapsedRealtime()
+                    if (idleCountdown > 0) {
+                        idleCountdown = 0
+                        return@onPreviewKeyEvent true
+                    }
+                }
+                false
+            }
             .focusRequester(focus)
             .focusable()
             .onKeyEvent { event ->
-                if (event.type != KeyEventType.KeyDown || guideOpen) return@onKeyEvent false
+                if (event.type != KeyEventType.KeyDown || guideOpen || menuOpen) return@onKeyEvent false
                 val code = event.nativeKeyEvent.keyCode
                 digitFor(code)?.let { d ->
                     if (digits.length < 4) digits += d
@@ -347,7 +425,8 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
                     AndroidKeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, AndroidKeyEvent.KEYCODE_SPACE -> togglePause()
                     AndroidKeyEvent.KEYCODE_MEDIA_PAUSE -> if (!paused) togglePause()
                     AndroidKeyEvent.KEYCODE_MEDIA_PLAY -> if (paused) togglePause()
-                    AndroidKeyEvent.KEYCODE_GUIDE, AndroidKeyEvent.KEYCODE_MENU -> guideOpen = true
+                    AndroidKeyEvent.KEYCODE_GUIDE -> guideOpen = true
+                    AndroidKeyEvent.KEYCODE_MENU, AndroidKeyEvent.KEYCODE_CAPTIONS, AndroidKeyEvent.KEYCODE_SETTINGS -> menuOpen = true
                     AndroidKeyEvent.KEYCODE_DPAD_CENTER, AndroidKeyEvent.KEYCODE_ENTER, AndroidKeyEvent.KEYCODE_INFO -> when {
                         error != null -> {
                             if (fromTime != null) fromTime = clock.position()
@@ -361,14 +440,24 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
                 true
             },
     ) {
-        AndroidView(
-            factory = { ctx -> SurfaceView(ctx).also { player.setVideoSurfaceView(it) } },
-            modifier = Modifier.fillMaxSize(),
-        )
+        VideoSurface(player, aspect, pictureMode)
+
+        val bannerShown = (showBanner || paused || pendingSeek != 0L) && error == null && !guideOpen
+        Subtitles(cues, Modifier.align(Alignment.BottomCenter).padding(bottom = if (bannerShown) 200.dp else 56.dp))
 
         error?.let { ErrorCard(channel, it, Modifier.align(Alignment.Center)) }
 
-        if ((showBanner || paused || pendingSeek != 0L) && error == null && !guideOpen) {
+        if (pendingSeek != 0L && !guideOpen) {
+            val target = (position() + pendingSeek) / 10_000
+            key(target) {
+                Thumbnail(
+                    url = { preview -> session.thumbnailUrl(channel, target * 10_000, preview) },
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(end = 56.dp, bottom = 196.dp).size(320.dp, 180.dp),
+                )
+            }
+        }
+
+        if (bannerShown) {
             ChannelBanner(
                 graph = graph,
                 channel = channel,
@@ -398,7 +487,50 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
                     bannerKey++
                 },
                 onClose = { guideOpen = false },
+                thumbnail = { ch, at, preview -> session.thumbnailUrl(ch, at, preview) },
             )
+        }
+
+        if (menuOpen) {
+            val isFav = remember(channel.id, favTick) { profileId != null && channel.id in graph.session.favourites(profileId) }
+            PlayerMenu(
+                tracks = tracks,
+                isFavourite = isFav,
+                pictureMode = pictureMode,
+                onToggleFavourite = {
+                    profileId?.let { graph.session.toggleFavourite(it, channel.id) }
+                    favTick++
+                },
+                onAudio = { g, i ->
+                    player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                        .setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i)).build()
+                    profileId?.let { graph.session.setAudioPref(it, channel.id, g.getTrackFormat(i).language) }
+                },
+                onText = { g, i ->
+                    val b = player.trackSelectionParameters.buildUpon()
+                    if (g == null) b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    else b.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false).setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                    player.trackSelectionParameters = b.build()
+                    profileId?.let { graph.session.setTextPref(it, channel.id, if (g == null) "off" else g.getTrackFormat(i).language ?: "und") }
+                },
+                onPicture = {
+                    pictureMode = it
+                    graph.session.pictureMode = it
+                },
+                onClose = { menuOpen = false },
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
+        }
+
+        if (idleCountdown > 0) {
+            Column(
+                Modifier.align(Alignment.Center).widthIn(max = 560.dp).background(Palette.Surface, RoundedCornerShape(20.dp)).padding(36.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Txt(stringResource(R.string.idle_title), Type.Title)
+                Spacer(Modifier.height(10.dp))
+                Txt(stringResource(R.string.idle_body, idleCountdown), Type.BodyDim)
+            }
         }
     }
 }

@@ -57,6 +57,8 @@ import dev.bettercoool.tv.ui.common.digitFor
 import dev.bettercoool.tv.ui.common.minuteClock
 import dev.bettercoool.tv.ui.theme.FocusCard
 import dev.bettercoool.tv.ui.theme.Palette
+import dev.bettercoool.tv.ui.theme.requestFocusSoon
+import dev.bettercoool.tv.ui.theme.onBack
 import dev.bettercoool.tv.ui.theme.Txt
 import dev.bettercoool.tv.ui.theme.Type
 import kotlinx.coroutines.CancellationException
@@ -64,9 +66,15 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val FILTER_UHD = "__uhd"
+private const val FILTER_FAV = "__fav"
 
 @Composable
-fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit, onGuide: (List<Channel>, Int) -> Unit) {
+fun HomeScreen(
+    graph: AppGraph,
+    onPlay: (List<Channel>, Int) -> Unit,
+    onGuide: (List<Channel>, Int) -> Unit,
+    onSettings: () -> Unit,
+) {
     var snapshot by remember { mutableStateOf(graph.catalog.snapshot) }
     var failed by remember { mutableStateOf(false) }
     var attempt by remember { mutableIntStateOf(0) }
@@ -118,7 +126,7 @@ fun HomeScreen(graph: AppGraph, onPlay: (List<Channel>, Int) -> Unit, onGuide: (
             failed -> Message(stringResource(R.string.home_error), action = stringResource(R.string.home_retry)) { attempt++ }
             s == null -> Message(stringResource(R.string.home_loading))
             s.profile == null -> ProfilePicker(s.profiles, selectProfile)
-            else -> ChannelBrowser(graph, s, selectProfile, onPlay, onGuide)
+            else -> ChannelBrowser(graph, s, selectProfile, onPlay, onGuide, onSettings)
         }
         pinFor?.let { p ->
             PinDialog(
@@ -140,20 +148,24 @@ private fun ChannelBrowser(
     onProfile: (Profile) -> Unit,
     onPlay: (List<Channel>, Int) -> Unit,
     onGuide: (List<Channel>, Int) -> Unit,
+    onSettings: () -> Unit,
 ) {
     val profile = snapshot.profile!!
     val all = snapshot.channels
+    var favs by remember(profile.uuid) { mutableStateOf(graph.session.favourites(profile.uuid)) }
     var filter by remember { mutableStateOf<String?>(null) }
-    val visible = remember(all, filter) {
+    val visible = remember(all, filter, favs) {
         when (filter) {
             null -> all
             FILTER_UHD -> all.filter { it.isUhd }
+            FILTER_FAV -> all.filter { it.id in favs }
             else -> all.filter { it.category == filter }
         }
     }
-    val filters = remember(all) {
+    val filters = remember(all, favs.isEmpty()) {
         val present = all.mapNotNull { it.category }.toSet()
-        listOf<String?>(null) + CategoryOrder.filter { it in present } +
+        listOf<String?>(null) + (if (favs.isNotEmpty()) listOf(FILTER_FAV) else emptyList()) +
+            CategoryOrder.filter { it in present } +
             (present - CategoryOrder.toSet()).sorted() +
             (if (all.any { it.isUhd }) listOf(FILTER_UHD) else emptyList())
     }
@@ -166,12 +178,14 @@ private fun ChannelBrowser(
     var jumpKey by remember { mutableIntStateOf(0) }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = (startIndex - 3).coerceAtLeast(0))
     val targetFocus = remember { FocusRequester() }
+    val filterFocus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(jumpKey) {
         if (visible.isEmpty()) return@LaunchedEffect
         listState.scrollToItem((focusTarget - 3).coerceAtLeast(0))
         withFrameNanos { }
-        runCatching { targetFocus.requestFocus() }
+        targetFocus.requestFocusSoon()
     }
 
     // Number entry: type a channel number anywhere on this screen.
@@ -206,8 +220,16 @@ private fun ChannelBrowser(
                     if (digits.length < 4) digits += d
                     true
                 }
-                code == android.view.KeyEvent.KEYCODE_GUIDE || code == android.view.KeyEvent.KEYCODE_MENU -> {
+                code == android.view.KeyEvent.KEYCODE_GUIDE -> {
                     onGuide(visible, focusedIndex.coerceIn(0, (visible.size - 1).coerceAtLeast(0)))
+                    true
+                }
+                code == android.view.KeyEvent.KEYCODE_MENU -> {
+                    visible.getOrNull(focusedIndex)?.let {
+                        graph.session.toggleFavourite(profile.uuid, it.id)
+                        favs = graph.session.favourites(profile.uuid)
+                        if (filter == FILTER_FAV && favs.isEmpty()) filter = null
+                    }
                     true
                 }
                 else -> false
@@ -216,15 +238,22 @@ private fun ChannelBrowser(
     ) {
         Row(Modifier.fillMaxSize().padding(start = 48.dp, top = 32.dp, end = 48.dp)) {
             Column(Modifier.width(440.dp).fillMaxHeight()) {
-                Header(snapshot, onProfile, onGuide = { onGuide(visible, focusedIndex.coerceIn(0, (visible.size - 1).coerceAtLeast(0))) })
+                Header(snapshot, onProfile, onSettings = onSettings, onGuide = { onGuide(visible, focusedIndex.coerceIn(0, (visible.size - 1).coerceAtLeast(0))) })
                 Spacer(Modifier.height(14.dp))
-                FilterRow(filters, filter) {
+                FilterRow(filters, filter, filterFocus) {
                     filter = it
                     focusedIndex = 0
                     focusTarget = 0
                 }
                 Spacer(Modifier.height(12.dp))
                 LazyColumn(
+                    // Back in the list jumps to the top controls; Back there leaves the app.
+                    modifier = Modifier.onBack {
+                        scope.launch {
+                            listState.scrollToItem(0)
+                            filterFocus.requestFocusSoon()
+                        }
+                    },
                     state = listState,
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                     contentPadding = PaddingValues(bottom = 36.dp),
@@ -232,6 +261,7 @@ private fun ChannelBrowser(
                     itemsIndexed(visible, key = { _, c -> c.id }) { index, channel ->
                         ChannelRow(
                             channel = channel,
+                            isFavourite = channel.id in favs,
                             nowTitle = remember(channel.id, epgRevision, clock) {
                                 graph.epg.nowNext(channel.id, clock).first?.name
                             },
@@ -259,7 +289,7 @@ private fun ChannelBrowser(
 }
 
 @Composable
-private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit, onGuide: () -> Unit) {
+private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit, onSettings: () -> Unit, onGuide: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Txt(stringResource(R.string.app_name).uppercase(), Type.Label, color = Palette.Accent)
@@ -267,6 +297,8 @@ private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit, onG
             Txt(stringResource(R.string.home_channels, snapshot.channels.size), Type.Label)
         }
         Chip(stringResource(R.string.guide), selected = false, onClick = onGuide)
+        Spacer(Modifier.width(6.dp))
+        Chip("⚙", selected = false, onClick = onSettings)
         Spacer(Modifier.width(6.dp))
         if (snapshot.profiles.size > 1) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -280,23 +312,25 @@ private fun Header(snapshot: Catalog.Snapshot, onProfile: (Profile) -> Unit, onG
 }
 
 @Composable
-private fun FilterRow(filters: List<String?>, selected: String?, onSelect: (String?) -> Unit) {
+private fun FilterRow(filters: List<String?>, selected: String?, focus: FocusRequester, onSelect: (String?) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         items(filters, key = { it ?: "" }) { f ->
             val label = when (f) {
                 null -> stringResource(R.string.cat_all)
                 FILTER_UHD -> stringResource(R.string.cat_uhd)
+                FILTER_FAV -> stringResource(R.string.cat_favourites)
                 else -> categoryLabel(f)
             }
-            Chip(label, selected = f == selected) { onSelect(f) }
+            Chip(label, selected = f == selected, Modifier.then(if (f == selected) Modifier.focusRequester(focus) else Modifier)) { onSelect(f) }
         }
     }
 }
 
 @Composable
-private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
+private fun Chip(text: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     FocusCard(
         onClick = onClick,
+        modifier = modifier,
         shape = RoundedCornerShape(50),
         idleColor = if (selected) Palette.SurfaceHigh else Palette.Surface,
     ) { focused ->
@@ -314,7 +348,7 @@ private fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ChannelRow(channel: Channel, nowTitle: String?, modifier: Modifier, onClick: () -> Unit) {
+private fun ChannelRow(channel: Channel, isFavourite: Boolean, nowTitle: String?, modifier: Modifier, onClick: () -> Unit) {
     FocusCard(onClick = onClick, modifier = modifier.fillMaxWidth().height(60.dp)) { focused ->
         val main = when {
             focused -> Palette.OnFocus
@@ -337,6 +371,10 @@ private fun ChannelRow(channel: Channel, nowTitle: String?, modifier: Modifier, 
                 if (nowTitle != null) {
                     Txt(nowTitle, Type.Label, maxLines = 1, color = if (focused) Palette.OnFocus.copy(alpha = 0.7f) else Palette.TextFaint)
                 }
+            }
+            if (isFavourite) {
+                Spacer(Modifier.width(8.dp))
+                Txt("★", Type.Body, color = if (focused) Palette.OnFocus else Palette.Accent)
             }
             if (channel.isUhd) {
                 Spacer(Modifier.width(8.dp))
@@ -380,13 +418,15 @@ private fun Preview(channel: Channel?, epg: EpgStore, epgRevision: Int, clock: L
         Spacer(Modifier.height(28.dp))
         val (now, next) = remember(channel.id, epgRevision, clock) { epg.nowNext(channel.id, clock) }
         NowNext(now, next, clock, descriptionLines = 4)
+        Spacer(Modifier.height(24.dp))
+        Txt(stringResource(R.string.hint_menu_fav), Type.Label, color = Palette.TextFaint)
     }
 }
 
 @Composable
 private fun ProfilePicker(profiles: List<Profile>, onSelect: (Profile) -> Unit) {
     val first = remember { FocusRequester() }
-    LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+    LaunchedEffect(Unit) { first.requestFocusSoon() }
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         LazyRow(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             itemsIndexed(profiles, key = { _, p -> p.uuid }) { i, p ->
@@ -417,7 +457,7 @@ private fun Message(text: String, action: String? = null, onAction: () -> Unit =
     Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
         Txt(text, Type.Title)
         if (action != null) {
-            LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+            LaunchedEffect(Unit) { focus.requestFocusSoon() }
             Spacer(Modifier.height(20.dp))
             FocusCard(onClick = onAction, modifier = Modifier.focusRequester(focus), shape = RoundedCornerShape(50), idleColor = Palette.Surface) { focused ->
                 Txt(action, Type.Body, Modifier.padding(horizontal = 24.dp, vertical = 10.dp), color = if (focused) Palette.OnFocus else Palette.Text)

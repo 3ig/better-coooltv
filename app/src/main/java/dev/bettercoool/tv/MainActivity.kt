@@ -18,6 +18,7 @@ import dev.bettercoool.tv.ui.guide.Guide
 import dev.bettercoool.tv.ui.home.HomeScreen
 import dev.bettercoool.tv.ui.pairing.PairingScreen
 import dev.bettercoool.tv.ui.player.PlayerScreen
+import dev.bettercoool.tv.ui.settings.SettingsScreen
 import dev.bettercoool.tv.ui.theme.Palette
 
 class MainActivity : ComponentActivity() {
@@ -43,6 +44,7 @@ private sealed interface Screen {
     data object Home : Screen
     data class Player(val channels: List<Channel>, val index: Int, val from: Long? = null) : Screen
     data class Guide(val channels: List<Channel>, val index: Int) : Screen
+    data object Settings : Screen
 }
 
 /** No navigation library: a handful of screens and a back stack of one don't need it. */
@@ -64,6 +66,7 @@ private fun AppRoot(graph: AppGraph) {
                 graph,
                 onPlay = { channels, index -> screen = Screen.Player(channels, index) },
                 onGuide = { channels, index -> screen = Screen.Guide(channels, index) },
+                onSettings = { screen = Screen.Settings },
             )
             is Screen.Player -> PlayerScreen(graph, s.channels, s.index, s.from, onExit = { screen = Screen.Home })
             is Screen.Guide -> Guide(
@@ -71,6 +74,7 @@ private fun AppRoot(graph: AppGraph) {
                 onPick = { index, from -> screen = Screen.Player(s.channels, index, from) },
                 onClose = { screen = Screen.Home },
             )
+            Screen.Settings -> SettingsScreen(graph, onBack = { screen = Screen.Home })
         }
     }
 }

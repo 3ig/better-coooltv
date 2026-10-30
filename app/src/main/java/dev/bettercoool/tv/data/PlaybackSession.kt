@@ -34,6 +34,19 @@ class PlaybackSession(
         }
     }
 
+    /**
+     * Flussonic DVR still for [atMs]: `dirname(stream)/YYYY/MM/DD/HH/mm/ss.jpg?token=…` (UTC), or the
+     * `-preview.jpg` variant. Only while a session exists — we never open one just for thumbnails.
+     */
+    fun thumbnailUrl(channel: Channel, atMs: Long, preview: Boolean = false): String? {
+        val id = uuid ?: return null
+        val stream = channel.stream ?: return null
+        if (!channel.hasTimeshift) return null
+        val t = java.time.Instant.ofEpochMilli(atMs - atMs % 10_000).atZone(java.time.ZoneOffset.UTC)
+        val path = "%04d/%02d/%02d/%02d/%02d/%02d".format(t.year, t.monthValue, t.dayOfMonth, t.hour, t.minute, t.second)
+        return "${stream.substringBeforeLast('/')}/$path${if (preview) "-preview" else ""}.jpg?token=${now()}:$id"
+    }
+
     /** Heartbeat every 15 s; last-active at most every 5 min. Run while the player is visible. */
     suspend fun keepAlive() {
         while (true) {

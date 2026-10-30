@@ -25,6 +25,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -55,7 +56,10 @@ import dev.bettercoool.tv.ui.common.NumberEntry
 import dev.bettercoool.tv.ui.common.digitFor
 import dev.bettercoool.tv.ui.common.hhmm
 import dev.bettercoool.tv.ui.common.minuteClock
+import dev.bettercoool.tv.ui.player.Thumbnail
 import dev.bettercoool.tv.ui.theme.Palette
+import dev.bettercoool.tv.ui.theme.onBack
+import dev.bettercoool.tv.ui.theme.requestFocusSoon
 import dev.bettercoool.tv.ui.theme.Txt
 import dev.bettercoool.tv.ui.theme.Type
 import kotlinx.coroutines.delay
@@ -90,6 +94,8 @@ fun Guide(
     onPick: (index: Int, fromMs: Long?) -> Unit,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Only available inside the player, where a playback session exists. */
+    thumbnail: ((Channel, Long, Boolean) -> String?)? = null,
 ) {
     val openedAt = remember { System.currentTimeMillis() }
     var row by remember { mutableIntStateOf(startIndex.coerceIn(0, (channels.size - 1).coerceAtLeast(0))) }
@@ -102,7 +108,7 @@ fun Guide(
     val focus = remember { FocusRequester() }
 
     LaunchedEffect(windowStart) { graph.epg.ensureRange(windowStart - SLOT, windowStart + SPAN + SLOT) }
-    LaunchedEffect(Unit) { focus.requestFocus() }
+    LaunchedEffect(Unit) { focus.requestFocusSoon() }
     BackHandler { if (digits.isNotEmpty()) digits = "" else onClose() }
 
     if (channels.isEmpty()) return
@@ -145,7 +151,7 @@ fun Guide(
         val t = System.currentTimeMillis()
         when {
             p == null || (p.startTime <= t && t < p.endTime) -> onPick(row, null)
-            p.endTime <= t && channel.hasTimeshift -> onPick(row, p.startTime)
+            p.endTime <= t && channel.hasTimeshift -> onPick(row, resumePoint(graph, channel, p) ?: p.startTime)
         }
     }
 
@@ -164,6 +170,7 @@ fun Guide(
         modifier
             .fillMaxSize()
             .background(Palette.Background.copy(alpha = 0.96f))
+            .onBack { if (digits.isNotEmpty()) digits = "" else onClose() }
             .focusRequester(focus)
             .focusable()
             .onKeyEvent { e ->
@@ -190,7 +197,19 @@ fun Guide(
             },
     ) {
         Column(Modifier.fillMaxSize().padding(start = 40.dp, end = 40.dp, top = 24.dp)) {
-            Details(channel, focused, now, Modifier.fillMaxWidth().height(128.dp))
+            Row(Modifier.fillMaxWidth().height(128.dp)) {
+                if (thumbnail != null && focused != null && channel.hasTimeshift && focused.startTime < now) {
+                    val at = if (focused.endTime <= now) minOf(focused.startTime + 5 * 60_000, focused.endTime - 60_000) else now - 2 * 60_000
+                    key(channel.id, focused.id) {
+                        Thumbnail(
+                            url = { preview -> thumbnail(channel, at, preview) },
+                            modifier = Modifier.size(width = 200.dp, height = 112.dp),
+                        )
+                    }
+                    Spacer(Modifier.width(20.dp))
+                }
+                Details(graph, channel, focused, now, Modifier.weight(1f).fillMaxSize())
+            }
             Ruler(windowStart, now, Modifier.fillMaxWidth().height(28.dp))
             Row(Modifier.fillMaxWidth().height(ROW_H * ROWS)) {
                 ChannelColumn(channels, firstRow, row, Modifier.width(CHANNEL_COL))
@@ -203,8 +222,11 @@ fun Guide(
     }
 }
 
+private fun resumePoint(graph: AppGraph, channel: Channel, p: EpgEntry): Long? =
+    graph.session.resumeAt(channel.id)?.takeIf { it > p.startTime + 60_000 && it < p.endTime - 120_000 }
+
 @Composable
-private fun Details(channel: Channel, p: EpgEntry?, now: Long, modifier: Modifier) {
+private fun Details(graph: AppGraph, channel: Channel, p: EpgEntry?, now: Long, modifier: Modifier) {
     Column(modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Txt(listOfNotNull(channel.number, channel.name).joinToString("  "), Type.Label)
@@ -224,7 +246,9 @@ private fun Details(channel: Channel, p: EpgEntry?, now: Long, modifier: Modifie
         val action = when {
             !channel.playable -> stringResource(R.string.not_in_plan)
             p.startTime <= t && t < p.endTime -> stringResource(R.string.guide_watch)
-            p.endTime <= t && channel.hasTimeshift -> stringResource(R.string.guide_watch_start)
+            p.endTime <= t && channel.hasTimeshift ->
+                resumePoint(graph, channel, p)?.let { stringResource(R.string.guide_resume, hhmm(it)) }
+                    ?: stringResource(R.string.guide_watch_start)
             p.endTime <= t -> stringResource(R.string.guide_no_catchup)
             else -> stringResource(R.string.guide_starts, hhmm(p.startTime))
         }
