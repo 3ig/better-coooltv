@@ -6,5 +6,5 @@ export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/
 ADB="$HOME/Library/Android/sdk/platform-tools/adb"
 
 ./gradlew :app:installDebug -q --console=plain
-"$ADB" shell am start -S -n dev.bettercoool.tv/.MainActivity >/dev/null
+"$ADB" shell am start -S -n dev.bettercoool.tv.debug/dev.bettercoool.tv.MainActivity >/dev/null
 echo "Launched."

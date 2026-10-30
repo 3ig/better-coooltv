@@ -438,7 +438,8 @@ private fun ProfilePicker(profiles: List<Profile>, onSelect: (Profile) -> Unit) 
                 ) { focused ->
                     Column(Modifier.size(width = 180.dp, height = 200.dp).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(Modifier.size(110.dp).background(Palette.SurfaceHigh, RoundedCornerShape(55.dp)), contentAlignment = Alignment.Center) {
-                            if (p.imageUrl != null) AsyncImage(model = p.imageUrl, contentDescription = null, modifier = Modifier.fillMaxSize())
+                            val avatar = p.whiteImageUrl ?: p.imageUrl
+                            if (avatar != null) AsyncImage(model = avatar, contentDescription = null, modifier = Modifier.padding(22.dp).fillMaxSize())
                             else Txt(p.name.take(1).uppercase(), Type.Display)
                         }
                         Spacer(Modifier.height(14.dp))

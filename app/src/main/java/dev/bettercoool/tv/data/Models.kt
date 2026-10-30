@@ -57,6 +57,8 @@ data class Profile(
     val uuid: String,
     val name: String,
     val imageUrl: String? = null,
+    /** White variant of the avatar, for dark backgrounds. */
+    val whiteImageUrl: String? = null,
     val pinCode: String? = null,
     val isProtected: Boolean = false,
 ) {

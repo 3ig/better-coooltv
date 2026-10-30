@@ -17,13 +17,32 @@ android {
         versionName = "0.1.0"
     }
 
+    // Release key lives outside the repo; its location and passwords come from ~/.gradle/gradle.properties.
+    val releaseStore = providers.gradleProperty("coooltvReleaseStoreFile").orNull
+    signingConfigs {
+        if (releaseStore != null) {
+            create("release") {
+                storeFile = file(releaseStore)
+                storePassword = providers.gradleProperty("coooltvReleaseStorePassword").get()
+                keyAlias = providers.gradleProperty("coooltvReleaseKeyAlias").get()
+                keyPassword = providers.gradleProperty("coooltvReleaseKeyPassword").get()
+            }
+        }
+    }
+
     buildTypes {
+        debug {
+            // Installs next to the release build (different signature), labelled "(dev)".
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-dev"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Until we have a release key, sign with the debug key so the APK is installable.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug").also {
+                logger.warn("coooltvReleaseStoreFile not set: release APK is signed with the debug key")
+            }
         }
     }
 
@@ -61,5 +80,6 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-hls:1.4.1")
 
     implementation("io.coil-kt:coil-compose:2.7.0")
+    implementation("io.coil-kt:coil-svg:2.7.0") // profile avatars are SVG
     implementation("com.google.zxing:core:3.5.3")
 }
