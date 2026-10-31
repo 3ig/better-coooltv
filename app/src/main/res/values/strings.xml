@@ -122,4 +122,17 @@
     <string name="settings_up_to_date">Имате последната версия</string>
     <string name="settings_updates_dev">Само в release версията</string>
     <string name="settings_update_error">Няма връзка с GitHub</string>
+    <string name="settings_player">Плейър</string>
+    <string name="player_modern">Модерен</string>
+    <string name="player_classic">Класически</string>
+    <string name="classic_swap">Върни</string>
+    <string name="classic_audio">Аудио: %1$s</string>
+    <string name="classic_subtitles">Субтитри: %1$s</string>
+    <string name="classic_resize">Оразмеряване: %1$s</string>
+    <string name="classic_fit">Нормално</string>
+    <string name="classic_fill">Лупа</string>
+    <string name="classic_stretch">Широко увеличение</string>
+    <string name="day_today">Днес</string>
+    <string name="day_yesterday">Вчера</string>
+    <string name="day_tomorrow">Утре</string>
 </resources>

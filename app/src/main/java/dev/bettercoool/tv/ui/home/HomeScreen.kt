@@ -406,7 +406,15 @@ private fun TopBar(
 
 @Composable
 private fun FilterRow(filters: List<String?>, selected: String?, focus: FocusRequester, onSelect: (String?) -> Unit) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    val state = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    // [focus] sits on the selected chip, which the list's Right key jumps to: keep it composed
+    // (scrolled into view) once the row is left, or that jump finds no target and crashes.
+    LazyRow(
+        Modifier.onFocusChanged { if (!it.hasFocus) scope.launch { state.scrollToItem(filters.indexOf(selected).coerceAtLeast(0)) } },
+        state = state,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         items(filters, key = { it ?: "" }) { f ->
             val label = when (f) {
                 null -> stringResource(R.string.cat_all)

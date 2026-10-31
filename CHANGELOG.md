@@ -8,6 +8,16 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+### Added
+- Classic player (Settings → Player): the old Coool TV app's player layout and remote keys, in
+  the app's own colours. OK shows the progress bar; Down shows it with the strip of channel tiles
+  and the programme row, which goes back up to 36 hours on catch-up channels. Up shows the
+  previous channel with "Swap back", Left/Right rewind and forward in 10 s steps (faster when
+  held), hold OK for the guide. Home and the guide are unchanged.
+
+### Fixed
+- Crash when pressing Right in the home channel list after scrolling the category row.
+
 ## [0.2.3] - 2026-10-31
 
 ### Fixed

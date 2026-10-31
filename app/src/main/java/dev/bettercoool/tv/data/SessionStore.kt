@@ -53,6 +53,11 @@ class SessionStore(context: Context) {
         get() = prefs.getInt("picture_mode", 0)
         set(value) = prefs.edit().putInt("picture_mode", value).apply()
 
+    /** Player layout: false = this app's own, true = the old Coool TV app's layout and remote keys. */
+    var classicPlayer: Boolean
+        get() = prefs.getBoolean("classic_player", false)
+        set(value) = prefs.edit().putBoolean("classic_player", value).apply()
+
     /** Per-channel audio / subtitle language, like the original's `chs-{profile}-{channel}`. Text "off" = disabled. */
     fun trackPrefs(profile: String, channelId: String): Pair<String?, String?> =
         prefs.getString("chs_a_${profile}_$channelId", null) to prefs.getString("chs_t_${profile}_$channelId", null)
@@ -81,10 +86,11 @@ class SessionStore(context: Context) {
     }
 
     fun clear() {
-        // Keep the user's language and colour choices across sign-out.
+        // Keep the user's language, colour and player layout choices across sign-out.
         val pinned = prefs.getString("language", null)
         val accent = prefs.getString("accent", null)
-        prefs.edit().clear().putString("language", pinned).putString("accent", accent).apply()
+        val classic = classicPlayer
+        prefs.edit().clear().putString("language", pinned).putString("accent", accent).putBoolean("classic_player", classic).apply()
         _loggedOut.tryEmit(Unit)
     }
 }

@@ -122,4 +122,17 @@
     <string name="settings_up_to_date">You’re up to date</string>
     <string name="settings_updates_dev">Release build only</string>
     <string name="settings_update_error">Couldn’t reach GitHub</string>
+    <string name="settings_player">Player</string>
+    <string name="player_modern">Modern</string>
+    <string name="player_classic">Classic</string>
+    <string name="classic_swap">Swap back</string>
+    <string name="classic_audio">Audio: %1$s</string>
+    <string name="classic_subtitles">Subtitles: %1$s</string>
+    <string name="classic_resize">Picture: %1$s</string>
+    <string name="classic_fit">Normal</string>
+    <string name="classic_fill">Zoom</string>
+    <string name="classic_stretch">Wide zoom</string>
+    <string name="day_today">Today</string>
+    <string name="day_yesterday">Yesterday</string>
+    <string name="day_tomorrow">Tomorrow</string>
 </resources>

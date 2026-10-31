@@ -26,6 +26,7 @@ import dev.bettercoool.tv.ui.guide.Guide
 import dev.bettercoool.tv.ui.home.HomeScreen
 import dev.bettercoool.tv.ui.pairing.PairingScreen
 import dev.bettercoool.tv.ui.player.PlayerScreen
+import dev.bettercoool.tv.ui.player.classic.ClassicPlayerScreen
 import dev.bettercoool.tv.ui.settings.SettingsScreen
 import dev.bettercoool.tv.ui.theme.KeyRepeat
 import dev.bettercoool.tv.ui.theme.Palette
@@ -141,7 +142,11 @@ private fun AppRoot(graph: AppGraph) {
                 onGuide = { channels, index -> screen = Screen.Guide(channels, index) },
                 onSettings = { screen = Screen.Settings },
             )
-            is Screen.Player -> PlayerScreen(graph, s.channels, s.index, s.from, onExit = { screen = Screen.Home })
+            is Screen.Player -> if (graph.session.classicPlayer) {
+                ClassicPlayerScreen(graph, s.channels, s.index, s.from, onExit = { screen = Screen.Home })
+            } else {
+                PlayerScreen(graph, s.channels, s.index, s.from, onExit = { screen = Screen.Home })
+            }
             is Screen.Guide -> Guide(
                 graph, s.channels, s.index,
                 onPick = { index, from -> screen = Screen.Player(s.channels, index, from) },

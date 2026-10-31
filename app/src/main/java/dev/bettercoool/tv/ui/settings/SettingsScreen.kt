@@ -177,6 +177,20 @@ fun SettingsScreen(graph: AppGraph, onBack: () -> Unit) {
                         )
                     }
                 }
+
+                Spacer(Modifier.height(28.dp))
+                Txt(stringResource(R.string.settings_player).uppercase(), Type.Label)
+                Spacer(Modifier.height(8.dp))
+                Row {
+                    var classic by remember { mutableStateOf(graph.session.classicPlayer) }
+                    listOf(false to stringResource(R.string.player_modern), true to stringResource(R.string.player_classic)).forEach { (value, name) ->
+                        Action(name + if (classic == value) "  ✓" else "") {
+                            classic = value
+                            graph.session.classicPlayer = value
+                        }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                }
             }
         }
     }
