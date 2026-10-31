@@ -8,6 +8,13 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-31
+
+### Changed
+- Classic player: the overlay and channel banner fade in and out, the channel tiles slide under a
+  focus frame that stays in the centre, and the programme row moves with you.
+- Classic player: the programme row always shows the title above the description.
+
 ## [0.3.0] - 2026-10-31
 
 ### Added
@@ -57,7 +64,8 @@ First public release.
 - Selectable main colour (coool green, mint, sky, lavender, coral, amber, rose, silver).
 - In-app updates from GitHub Releases.
 
-[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/3ig/better-coooltv/releases/tag/v0.3.1
 [0.3.0]: https://github.com/3ig/better-coooltv/releases/tag/v0.3.0
 [0.2.3]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.3
 [0.2.2]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.2
