@@ -29,6 +29,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -88,6 +89,9 @@ internal fun overlayGradient(lists: Boolean): Brush {
     return Brush.verticalGradient(*stops.zip(colors).toTypedArray())
 }
 
+/** Tile plus the gap to the next one. */
+private const val TILE_SLOT = 180
+
 /** How a tile shows focus: none, the accent outline, or a faint outline (focus is in the programme row). */
 internal enum class TileFocus { None, Focused, Selected }
 
@@ -130,18 +134,40 @@ internal fun ChannelTile(px: Px, channel: Channel, playing: Boolean, focus: Tile
  * with the focused channel's name below and a hint towards the playing channel when it's off-strip.
  */
 @Composable
-internal fun ChannelStrip(px: Px, channels: List<Channel>, focused: Int, playing: Int, focus: TileFocus, modifier: Modifier = Modifier) {
+internal fun ChannelStrip(
+    px: Px,
+    channels: List<Channel>,
+    focused: Int,
+    playing: Int,
+    focus: TileFocus,
+    modifier: Modifier = Modifier,
+    /** Offset in tile slots while sliding to [focused]; read at draw time only. */
+    slide: () -> Float = { 0f },
+) {
     val n = channels.size
     Column(modifier.fillMaxWidth().height(px(STRIP_HEIGHT)), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(Modifier.wrapContentWidth(unbounded = true).padding(top = px(20), bottom = px(16)), horizontalArrangement = Arrangement.spacedBy(px(30))) {
-            for (d in -5..5) {
-                // Short lists: leave the slots empty rather than showing a channel twice.
-                if (n == 0 || (n < 11 && (d < -(n - 1) / 2 || d > n / 2))) {
-                    Spacer(Modifier.size(px(150)))
-                    continue
+        Box(Modifier.fillMaxWidth().padding(top = px(20), bottom = px(16)), contentAlignment = Alignment.TopCenter) {
+            // Tiles slide underneath; one spare tile each side keeps the edges filled while they do.
+            Row(
+                Modifier
+                    .wrapContentWidth(unbounded = true)
+                    .graphicsLayer { translationX = slide() * px(TILE_SLOT).toPx() },
+                horizontalArrangement = Arrangement.spacedBy(px(TILE_SLOT - 150)),
+            ) {
+                for (d in -6..6) {
+                    // Short lists: leave the slots empty rather than showing a channel twice.
+                    if (n == 0 || (n < 13 && (d < -(n - 1) / 2 || d > n / 2))) {
+                        Spacer(Modifier.size(px(150)))
+                        continue
+                    }
+                    val i = (focused + d).mod(n)
+                    ChannelTile(px, channels[i], playing = i == playing, focus = TileFocus.None)
                 }
-                val i = (focused + d).mod(n)
-                ChannelTile(px, channels[i], playing = i == playing, focus = if (d == 0) focus else TileFocus.None)
+            }
+            // The focus frame stays put in the centre, as in the old app.
+            if (focus != TileFocus.None) {
+                val shape = RoundedCornerShape(px(16))
+                Box(Modifier.size(px(150)).border(px(3), if (focus == TileFocus.Focused) Palette.Accent else Palette.TextFaint, shape))
             }
         }
         // Shortest way round to the playing channel; hinted once it's beyond the visible tiles.
@@ -273,17 +299,14 @@ private fun EpgCard(px: Px, p: EpgEntry?, centre: Boolean, active: Boolean, cloc
             }
             Spacer(Modifier.height(px(8)))
             val description = p.description?.takeIf { it.isNotBlank() }
-            when {
-                !centre -> Txt(p.name, px.text(25, align = TextAlign.Center), maxLines = 1)
-                // The title is already above the timeline unless this row has focus.
-                active || description == null -> {
-                    Txt(p.name, px.text(28, FontWeight.SemiBold, align = TextAlign.Center), maxLines = 1)
-                    if (description != null) {
-                        Spacer(Modifier.height(px(6)))
-                        Txt(description, px.text(23, color = Palette.TextDim, align = TextAlign.Center), maxLines = 3)
-                    }
+            if (!centre) {
+                Txt(p.name, px.text(25, align = TextAlign.Center), maxLines = 1)
+            } else {
+                Txt(p.name, px.text(28, FontWeight.SemiBold, align = TextAlign.Center), maxLines = 1)
+                if (description != null) {
+                    Spacer(Modifier.height(px(6)))
+                    Txt(description, px.text(23, color = Palette.TextDim, align = TextAlign.Center), maxLines = 3)
                 }
-                else -> Txt(description, px.text(24, align = TextAlign.Center), maxLines = 4)
             }
         }
         val f = ((clock - p?.startTime.orZero()).toFloat() / ((p?.endTime ?: 0) - p?.startTime.orZero()).coerceAtLeast(1)).coerceIn(0f, 1f)

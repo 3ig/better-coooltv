@@ -3,6 +3,11 @@ package dev.bettercoool.tv.ui.player.classic
 import android.view.KeyEvent as AndroidKeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.CompositingStrategy
+import kotlinx.coroutines.launch
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
@@ -21,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -73,6 +79,8 @@ import java.time.Instant
 private const val OVERLAY_TIMEOUT = 7_000L
 private const val BANNER_TIMEOUT = 5_000L
 private const val NUMBER_TIMEOUT = 5_000L
+/** How far (px) the programme row nudges when it changes; the cards differ in width, so it can't scroll exactly. */
+private const val EPG_NUDGE = 80f
 private const val EPG_BACK_STEP = 6 * 60 * 60_000L
 /** Past programmes reachable in the row; the store keeps ~48 h in memory. Older ones are in the guide. */
 private const val EPG_BACK_MAX = 36 * 60 * 60_000L
@@ -106,6 +114,13 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
     var listOpen by remember { mutableStateOf(false) }
     var okLongPressed by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
+    val scope = rememberCoroutineScope()
+    // Slide offsets: the strip in tile slots, the programme row in px; both settle to 0.
+    val stripSlide = remember { Animatable(0f) }
+    val epgSlide = remember { Animatable(0f) }
+    // What to keep drawing while the overlay or banner fades out.
+    var lastLayer by remember { mutableStateOf(Layer.Progress) }
+    var lastBanner by remember { mutableStateOf(Banner.Current) }
     val revision by graph.epg.revision.collectAsState()
     val clock = minuteClock()
     val channel = c.channel
@@ -138,6 +153,17 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
         }
         banner = null
         layer = l
+    }
+
+    /**
+     * Moves content [d] steps with a 200 ms slide, like the old app. While a key is held the slides
+     * would pile up faster than these boxes can draw them, so repeats jump straight there.
+     */
+    fun slide(anim: Animatable<Float, *>, by: Float, repeat: Int) {
+        scope.launch {
+            anim.snapTo(if (repeat > 0) 0f else anim.value + by)
+            if (repeat == 0) anim.animateTo(0f, tween(200))
+        }
     }
 
     fun showBanner(b: Banner) {
@@ -192,9 +218,12 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
                     Layer.Channels -> {
                         strip = (strip + d).mod(c.list.size)
                         epgAt = null
+                        slide(stripSlide, d.toFloat(), repeat)
+                        slide(epgSlide, d * EPG_NUDGE, repeat)
                     }
                     Layer.Epg -> {
                         val i = (epgIndex + d).coerceIn(0, (programmes.size - 1).coerceAtLeast(0))
+                        if (i != epgIndex) slide(epgSlide, d * EPG_NUDGE, repeat)
                         epgAt = programmes.getOrNull(i)?.startTime
                         if (d < 0 && i <= 1 && epgBack < EPG_BACK_MAX) epgBack += EPG_BACK_STEP
                     }
@@ -347,10 +376,23 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
         val behindLive = (c.fromTime != null || c.paused) && !c.hasError
         if (behindLive && layer == null && banner == null) TimeshiftMark(px, Modifier.align(Alignment.TopEnd))
 
-        layer?.let { l ->
+        LaunchedEffect(layer) { layer?.let { lastLayer = it } }
+        LaunchedEffect(banner) { banner?.let { lastBanner = it } }
+        // Overlay and banner fade and slide in and out (200 ms, as in the old app). Only alpha and
+        // translation change per frame: no relayout, and ModulateAlpha avoids an offscreen buffer.
+        // The animated values are read only in draw lambdas; composition just sees on/off.
+        val overlayAnim = animateFloatAsState(if (layer != null) 1f else 0f, tween(200), label = "overlay")
+        val bannerAnim = animateFloatAsState(if (banner != null) 1f else 0f, tween(200), label = "banner")
+        val overlayShown by remember { derivedStateOf { overlayAnim.value > 0f } }
+        val bannerShown by remember { derivedStateOf { bannerAnim.value > 0f } }
+        val overlayIn = { overlayAnim.value }
+        val bannerIn = { bannerAnim.value }
+
+        if (overlayShown) {
+            val l = layer ?: lastLayer
             // One Down shows the whole block (timeline, channel strip, programme row) like the old app;
             // on the progress bar it slides down so only the top of the channel strip peeks out.
-            val shift by animateFloatAsState(
+            val shift = animateFloatAsState(
                 when (l) {
                     Layer.Settings, Layer.Progress -> (STRIP_HEIGHT - STRIP_PEEK + EPG_HEIGHT).toFloat()
                     Layer.Channels, Layer.Epg -> 0f
@@ -358,10 +400,11 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
                 tween(200),
                 label = "layer",
             )
-            Box(Modifier.fillMaxSize().background(overlayGradient(lists = l == Layer.Channels || l == Layer.Epg)))
+            val gradient = overlayGradient(lists = l == Layer.Channels || l == Layer.Epg)
+            Box(Modifier.fillMaxSize().drawBehind { drawRect(gradient, alpha = overlayIn()) })
             if (l == Layer.Settings) {
                 Row(
-                    Modifier.fillMaxWidth().height(px(144)).background(TopFade).padding(top = px(20)),
+                    Modifier.fillMaxWidth().height(px(144)).fade(overlayIn).background(TopFade).padding(top = px(20)),
                     horizontalArrangement = Arrangement.spacedBy(px(40), Alignment.CenterHorizontally),
                 ) {
                     val (audio, subtitle) = trackNames(c.tracks)
@@ -372,7 +415,11 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
                 }
             }
             Column(
-                Modifier.align(Alignment.BottomCenter).fillMaxWidth().graphicsLayer { translationY = px(shift).toPx() },
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().graphicsLayer {
+                    translationY = px(shift.value).toPx() + (1 - overlayIn()) * px(60).toPx()
+                    alpha = overlayIn()
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                },
             ) {
                 val pos by produceState(c.position(), c.channel.id, c.fromTime, c.paused) {
                     while (true) {
@@ -410,15 +457,26 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
                     Layer.Epg -> TileFocus.Selected
                     else -> TileFocus.None
                 }
-                ChannelStrip(px, c.list, focused = strip, playing = c.index, focus = tileFocus)
-                EpgRow(px, programmes, epgIndex, clock, active = l == Layer.Epg)
+                ChannelStrip(px, c.list, focused = strip, playing = c.index, focus = tileFocus, slide = { stripSlide.value })
+                EpgRow(
+                    px, programmes, epgIndex, clock, active = l == Layer.Epg,
+                    modifier = Modifier.graphicsLayer { translationX = px(epgSlide.value).toPx() },
+                )
             }
         }
 
-        banner?.let { b ->
+        if (bannerShown) {
+            val b = banner ?: lastBanner
             val shown = if (b == Banner.Swap) c.previous ?: channel else channel
             val now = remember(shown.id, revision, clock) { graph.epg.nowNext(shown.id, clock).first }
-            ZapBanner(px, shown, now, playing = shown.id == channel.id, swap = b == Banner.Swap, modifier = Modifier.align(Alignment.TopCenter))
+            ZapBanner(
+                px, shown, now, playing = shown.id == channel.id, swap = b == Banner.Swap,
+                modifier = Modifier.align(Alignment.TopCenter).graphicsLayer {
+                    translationY = -(1 - bannerIn()) * px(40).toPx()
+                    alpha = bannerIn()
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                },
+            )
         }
 
         if (digits.isNotEmpty()) {
@@ -513,4 +571,10 @@ private fun nextSubtitle(c: PlayerController) {
     if (options.isEmpty()) return
     val next = options.indexOfFirst { (g, i) -> g.isTrackSelected(i) } + 1
     if (next >= options.size) c.selectText(null, 0) else options[next].let { (g, i) -> c.selectText(g, i) }
+}
+
+/** Alpha only, applied without an offscreen buffer. */
+private fun Modifier.fade(alpha: () -> Float): Modifier = graphicsLayer {
+    this.alpha = alpha()
+    compositingStrategy = CompositingStrategy.ModulateAlpha
 }
