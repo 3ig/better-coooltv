@@ -1,7 +1,11 @@
 package dev.bettercoool.tv
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import androidx.core.content.ContextCompat
 import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.decode.SvgDecoder
@@ -12,6 +16,7 @@ import dev.bettercoool.tv.data.CooolApi
 import dev.bettercoool.tv.data.DeviceEvents
 import dev.bettercoool.tv.data.DeviceInfo
 import dev.bettercoool.tv.data.EpgStore
+import dev.bettercoool.tv.data.ServerClock
 import dev.bettercoool.tv.data.SessionStore
 import dev.bettercoool.tv.data.Updater
 import kotlinx.coroutines.CoroutineScope
@@ -26,6 +31,11 @@ class CooolApp : Application(), ImageLoaderFactory {
         super.onCreate()
         graph = AppGraph(this)
         AccentPresets.firstOrNull { it.key == graph.session.accentKey }?.let { Palette.Accent = it.color }
+        // Network time arriving after standby corrects the system clock; re-measure against the server then.
+        val timeChanged = object : BroadcastReceiver() {
+            override fun onReceive(context: Context, intent: Intent) = ServerClock.reset()
+        }
+        ContextCompat.registerReceiver(this, timeChanged, IntentFilter(Intent.ACTION_TIME_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)

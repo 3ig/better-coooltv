@@ -1,5 +1,6 @@
 package dev.bettercoool.tv.ui.update
 
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -68,6 +69,7 @@ fun UpdateDialog(updater: Updater, release: Updater.Release, onDismiss: () -> Un
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                Log.w("Updater", "Update failed", e)
                 phase = Phase.Failed
             }
         }

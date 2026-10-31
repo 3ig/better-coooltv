@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.bettercoool.tv.R
+import dev.bettercoool.tv.data.ServerClock
 import dev.bettercoool.tv.data.EpgEntry
 import dev.bettercoool.tv.ui.theme.Palette
 import dev.bettercoool.tv.ui.theme.Txt
@@ -54,10 +55,10 @@ fun hhmm(epochMs: Long): String = clock.format(Instant.ofEpochMilli(epochMs))
 /** Wall clock that only ticks once a minute (on the minute), so progress bars stay cheap. */
 @Composable
 fun minuteClock(): Long {
-    val now by produceState(System.currentTimeMillis()) {
+    val now by produceState(ServerClock.now()) {
         while (true) {
-            delay(60_000 - System.currentTimeMillis() % 60_000)
-            value = System.currentTimeMillis()
+            delay(60_000 - ServerClock.now() % 60_000)
+            value = ServerClock.now()
         }
     }
     return now

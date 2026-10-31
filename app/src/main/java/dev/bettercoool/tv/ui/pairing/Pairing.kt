@@ -1,6 +1,7 @@
 package dev.bettercoool.tv.ui.pairing
 
 import dev.bettercoool.tv.AppGraph
+import dev.bettercoool.tv.data.ServerClock
 import dev.bettercoool.tv.data.ApiJson
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
@@ -40,10 +41,10 @@ suspend fun runPairing(graph: AppGraph, emit: (PairingState) -> Unit) {
             delay(5_000)
             continue
         }
-        val expiresAt = code.expiresAtMillis ?: (System.currentTimeMillis() + 5 * 60_000)
+        val expiresAt = code.expiresAtMillis ?: (ServerClock.now() + 5 * 60_000)
         emit(PairingState.ShowCode(code.shortCode, expiresAt))
 
-        val ttl = (expiresAt - System.currentTimeMillis()).coerceAtLeast(15_000)
+        val ttl = (expiresAt - ServerClock.now()).coerceAtLeast(15_000)
         val grant = withTimeoutOrNull(ttl) {
             graph.api.authCodeEvents(code.shortCode)
                 .retryWhen { cause, attempt ->

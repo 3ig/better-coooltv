@@ -139,13 +139,14 @@ class Updater(private val context: Context) {
 
         /**
          * Release notes are Markdown; show them as plain text with bullets. Lines that continue a
-         * wrapped bullet in the source are joined back onto it.
+         * wrapped bullet in the source are joined back onto it; the trailing Install section is dropped.
          */
         fun plainNotes(markdown: String): String {
             val out = mutableListOf<String>()
             for (raw in markdown.lines()) {
                 val line = raw.trim()
                 if (line.isEmpty() || line.startsWith("<!--")) continue
+                if (line.matches(Regex("^#+\\s*Install\\b.*"))) break // sideloading notes for the GitHub page only
                 val isNew = line.startsWith("#") || line.matches(Regex("^[-*]\\s+.*"))
                 val text = line.replace(Regex("^#+\\s*"), "")
                     .replace(Regex("^[-*]\\s+"), "• ")
