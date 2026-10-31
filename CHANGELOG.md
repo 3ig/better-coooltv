@@ -8,6 +8,8 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-31
+
 ### Added
 - Classic player (Settings → Player): the old Coool TV app's player layout and remote keys, in
   the app's own colours. OK shows the progress bar; Down shows it with the strip of channel tiles
@@ -55,7 +57,8 @@ First public release.
 - Selectable main colour (coool green, mint, sky, lavender, coral, amber, rose, silver).
 - In-app updates from GitHub Releases.
 
-[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/3ig/better-coooltv/releases/tag/v0.3.0
 [0.2.3]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.3
 [0.2.2]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.2
 [0.2.1]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.1
