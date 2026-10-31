@@ -68,7 +68,6 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import coil.compose.AsyncImage
 import dev.bettercoool.tv.AppGraph
-import dev.bettercoool.tv.data.ServerClock
 import dev.bettercoool.tv.R
 import dev.bettercoool.tv.data.ApiException
 import dev.bettercoool.tv.data.Capabilities
@@ -197,12 +196,13 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         fromTime != null -> clock.position()
         // ExoPlayer's live offset depends on the stream's clock matching the TV's; on these streams it can be
         // off by tens of seconds (even negative), so only trust plausible values and assume typical HLS latency otherwise.
-        else -> ServerClock.now() - player.currentLiveOffset.let { if (it in 3_000L..90_000L) it else LIVE_LATENCY }
+        else -> System.currentTimeMillis() - player.currentLiveOffset.let { if (it in 3_000L..90_000L) it else LIVE_LATENCY }
     }
 
     /**
      * Network failures retry quietly with backoff before an error shows: after standby the TV's Wi-Fi/DNS
-     * (and on some sets the clock) can take a while to come back. Returns false once retries are used up.
+     * can take a while to come back, and a brand-new session's first request sometimes gets a 404.
+     * Returns false once retries are used up.
      */
     fun retrySoon(max: Int = AUTO_RETRIES): Boolean {
         if (autoRetries >= max) {
@@ -212,7 +212,6 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
         val wait = 1_000L shl autoRetries.coerceAtMost(3)
         autoRetries++
         reconnecting = true
-        ServerClock.reset() // re-check the clock too: a skewed one gets stream tokens rejected
         scope.launch {
             delay(wait)
             if (fromTime != null) fromTime = clock.position()
@@ -248,7 +247,7 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
 
             override fun onPlayerError(e: PlaybackException) {
                 session.end()
-                // IO errors (2xxx) are worth retrying; an HTTP error status only briefly (bad token vs. dead stream).
+                // IO errors (2xxx) are worth retrying; an HTTP error status only briefly (session hiccup vs. dead stream).
                 val max = if (e.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS) 2 else AUTO_RETRIES
                 if (e.errorCode in 2000..2999 && retrySoon(max)) return
                 val current = list[index]
@@ -339,7 +338,7 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
     LaunchedEffect(pendingSeek) {
         if (pendingSeek == 0L) return@LaunchedEffect
         delay(800)
-        val now = ServerClock.now()
+        val now = System.currentTimeMillis()
         val target = (position() + pendingSeek).coerceAtLeast(now - ARCHIVE_DEPTH)
         pendingSeek = 0
         fromTime = if (target >= now - LIVE_LATENCY / 2) null else target
@@ -441,7 +440,7 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
             pausedAt = position()
             paused = true
             player.pause()
-        } else if (channel.hasTimeshift && ServerClock.now() - pausedAt > 3_000) {
+        } else if (channel.hasTimeshift && System.currentTimeMillis() - pausedAt > 3_000) {
             // Resume from where we paused via the archive.
             val at = pausedAt
             paused = false
@@ -716,7 +715,7 @@ private fun InfoBar(
         value = position()
     }
     val target = pos + pendingSeek
-    val behind = ServerClock.now() - target
+    val behind = System.currentTimeMillis() - target
 
     Column(modifier.fillMaxWidth().background(Palette.Scrim).padding(horizontal = 56.dp, vertical = 24.dp)) {
         Row(verticalAlignment = Alignment.Top) {
@@ -785,7 +784,7 @@ private fun InfoBar(
 
 @Composable
 private fun TransportBar(graph: AppGraph, channel: Channel, revision: Int, target: Long) {
-    val now = ServerClock.now()
+    val now = System.currentTimeMillis()
     val p = remember(channel.id, revision, target / 60_000) { graph.epg.programmeAt(channel.id, target) }
     // Programme span, or a 1 h window ending at live when there's no guide data.
     val from = p?.startTime ?: (now - 60 * 60_000)
@@ -827,7 +826,7 @@ private fun BehindLivePill(position: () -> Long, paused: Boolean, modifier: Modi
     }
     ReplayPill(
         if (paused) stringResource(R.string.paused)
-        else stringResource(R.string.replay_behind, formatSpan(ServerClock.now() - pos)),
+        else stringResource(R.string.replay_behind, formatSpan(System.currentTimeMillis() - pos)),
         modifier.background(Palette.Scrim, RoundedCornerShape(50)),
     )
 }

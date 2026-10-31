@@ -24,8 +24,6 @@ class PlaybackSession(
      * which plays from that moment onward toward live.
      */
     suspend fun streamUrl(channel: Channel, fromMs: Long? = null): String {
-        // The token's timestamp must match the server's clock; make sure we know it before building one.
-        if (!ServerClock.synced) runCatching { api.heartbeat() }
         val id = mutex.withLock { uuid ?: api.createSession(device).uuid.also { uuid = it; lastTouch = now() } }
         val token = "token=${now()}:$id"
         val timeshift = channel.streamTimeshift
@@ -69,5 +67,5 @@ class PlaybackSession(
         scope.launch { runCatching { api.endSession(id) } }
     }
 
-    private fun now() = ServerClock.now()
+    private fun now() = System.currentTimeMillis()
 }

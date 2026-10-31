@@ -48,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import dev.bettercoool.tv.AppGraph
-import dev.bettercoool.tv.data.ServerClock
 import dev.bettercoool.tv.R
 import dev.bettercoool.tv.data.Channel
 import dev.bettercoool.tv.data.EpgEntry
@@ -105,7 +104,7 @@ fun Guide(
     /** Over playing video: let the picture show through. */
     translucent: Boolean = false,
 ) {
-    val openedAt = remember { ServerClock.now() }
+    val openedAt = remember { System.currentTimeMillis() }
     var row by remember { mutableIntStateOf(startIndex.coerceIn(0, (channels.size - 1).coerceAtLeast(0))) }
     var firstRow by remember { mutableIntStateOf((row - 2).coerceIn(0, (channels.size - ROWS).coerceAtLeast(0))) }
     var focusTime by remember { mutableLongStateOf(openedAt) }
@@ -161,7 +160,7 @@ fun Guide(
     fun pick() {
         if (!channel.playable) return
         val p = focused
-        val t = ServerClock.now()
+        val t = System.currentTimeMillis()
         when {
             p == null || (p.startTime <= t && t < p.endTime) -> onPick(row, null)
             p.endTime <= t && channel.hasTimeshift -> onPick(row, resumePoint(graph, channel, p) ?: p.startTime)
@@ -255,7 +254,7 @@ private fun Details(graph: AppGraph, channel: Channel, p: EpgEntry?, now: Long, 
         }
         Txt(p.name, Type.Title, maxLines = 1)
         Spacer(Modifier.height(2.dp))
-        val t = ServerClock.now()
+        val t = System.currentTimeMillis()
         val action = when {
             !channel.playable -> stringResource(R.string.not_in_plan)
             p.startTime <= t && t < p.endTime -> stringResource(R.string.guide_watch)

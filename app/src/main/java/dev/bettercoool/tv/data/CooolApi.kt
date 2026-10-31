@@ -43,11 +43,6 @@ class CooolApi(private val store: SessionStore) {
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .addInterceptor(DefaultHeaders())
-        .addNetworkInterceptor { chain ->
-            chain.proceed(chain.request()).also { r ->
-                r.headers.getDate("Date")?.let { ServerClock.update(it.time, r.sentRequestAtMillis, r.receivedResponseAtMillis) }
-            }
-        }
         .build()
 
     private val client: OkHttpClient = plainClient.newBuilder()

@@ -10,9 +10,8 @@ app's built-in updater shows the same notes.
 
 ### Fixed
 - Channels failing with an error right after the TV wakes from standby: the player now quietly
-  retries while the network comes back ("Connecting…").
-- Playback and guide times on TVs whose clock is off (e.g. a 2015 Sony right after standby): the app
-  now follows the server's clock.
+  retries while the network comes back, or when a new session's first request is refused
+  ("Connecting…").
 - In-app updates on Android 7.0, which didn't trust GitHub's download server.
 - Update dialog no longer shows the GitHub page's install instructions.
 

@@ -39,7 +39,7 @@ class EpgStore(private val api: CooolApi, cacheDir: File) {
     fun programmeAt(channelId: String, at: Long): EpgEntry? =
         programmes(channelId).firstOrNull { it.startTime <= at && at < it.endTime }
 
-    fun nowNext(channelId: String, at: Long = ServerClock.now()): Pair<EpgEntry?, EpgEntry?> {
+    fun nowNext(channelId: String, at: Long = System.currentTimeMillis()): Pair<EpgEntry?, EpgEntry?> {
         val list = programmes(channelId)
         val i = list.indexOfFirst { at < it.endTime }
         if (i < 0) return null to null
@@ -50,7 +50,7 @@ class EpgStore(private val api: CooolApi, cacheDir: File) {
 
     /** Guide data around now. Cheap when the blocks are already loaded. */
     suspend fun ensure() {
-        val now = ServerClock.now()
+        val now = System.currentTimeMillis()
         ensureRange(now - 30 * 60_000, now + 3 * BLOCK)
     }
 
@@ -89,7 +89,7 @@ class EpgStore(private val api: CooolApi, cacheDir: File) {
     }
 
     private suspend fun refreshVersion() {
-        val now = ServerClock.now()
+        val now = System.currentTimeMillis()
         if (now - versionCheckedAt < 10 * 60_000) return
         val server = runCatching { api.epgVersion() }.getOrNull() ?: return
         versionCheckedAt = now
@@ -108,7 +108,7 @@ class EpgStore(private val api: CooolApi, cacheDir: File) {
     }
 
     private fun evict() {
-        val now = ServerClock.now()
+        val now = System.currentTimeMillis()
         if (blocks.size > MAX_BLOCKS) {
             blocks.keys.sortedByDescending { kotlin.math.abs(it + BLOCK / 2 - now) }
                 .take(blocks.size - MAX_BLOCKS)

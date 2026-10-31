@@ -28,7 +28,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dev.bettercoool.tv.AppGraph
-import dev.bettercoool.tv.data.ServerClock
 import dev.bettercoool.tv.R
 import dev.bettercoool.tv.ui.theme.Palette
 import dev.bettercoool.tv.ui.theme.Txt
@@ -125,9 +124,9 @@ private fun PairingCode(code: String) {
 /** Only this small text recomposes every second. */
 @Composable
 private fun Countdown(expiresAtMillis: Long, modifier: Modifier = Modifier) {
-    val remaining by produceState(expiresAtMillis - ServerClock.now(), expiresAtMillis) {
+    val remaining by produceState(expiresAtMillis - System.currentTimeMillis(), expiresAtMillis) {
         while (true) {
-            value = expiresAtMillis - ServerClock.now()
+            value = expiresAtMillis - System.currentTimeMillis()
             delay(1_000)
         }
     }
