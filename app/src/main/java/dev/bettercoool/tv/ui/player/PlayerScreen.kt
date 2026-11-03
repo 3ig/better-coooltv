@@ -131,7 +131,6 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { e ->
-                if (e.type == KeyEventType.KeyDown && c.onInput()) return@onPreviewKeyEvent true
                 // A long-press OK opened something (guide, menu). The rest of that press — further
                 // auto-repeats and the release — must not reach it: the guide plays on OK key-down.
                 if (okLongPressed && isOk(e.nativeKeyEvent.keyCode)) {
@@ -301,8 +300,6 @@ fun PlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: Int, star
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
-
-        IdleQuestion(c)
     }
 }
 
@@ -320,20 +317,6 @@ internal fun BoxScope.PlayerStatus(c: PlayerController) {
     }
 }
 
-/** "Still watching?" countdown; shared by both player layouts. */
-@Composable
-internal fun BoxScope.IdleQuestion(c: PlayerController) {
-    if (c.idleCountdown > 0) {
-        Column(
-            Modifier.align(Alignment.Center).widthIn(max = 560.dp).background(Palette.Surface, RoundedCornerShape(20.dp)).padding(36.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Txt(stringResource(R.string.idle_title), Type.Title)
-            Spacer(Modifier.height(10.dp))
-            Txt(stringResource(R.string.idle_body, c.idleCountdown), Type.BodyDim)
-        }
-    }
-}
 
 data class StreamInfo(val format: Format? = null, val decoder: String? = null, val dropped: Int = 0) {
     fun describe(): String = listOfNotNull(

@@ -65,9 +65,6 @@
     <string name="cat_favourites">★ Favourites</string>
     <string name="hint_menu_fav">Hold OK · Favourite</string>
     <string name="guide_resume">OK · Resume from %1$s</string>
-    <string name="idle_title">Still watching?</string>
-    <string name="idle_body">Playback stops in %1$d s. Press any button to keep watching.</string>
-    <string name="idle_stopped">Playback stopped while you were away.</string>
     <string name="settings">Settings</string>
     <string name="settings_device">Device</string>
     <string name="settings_uhd">4K (HEVC 10-bit)</string>

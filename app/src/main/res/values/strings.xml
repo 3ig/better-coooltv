@@ -65,9 +65,6 @@
     <string name="cat_favourites">★ Любими</string>
     <string name="hint_menu_fav">Задръж OK · Любим</string>
     <string name="guide_resume">OK · Продължи от %1$s</string>
-    <string name="idle_title">Още ли гледате?</string>
-    <string name="idle_body">Възпроизвеждането спира след %1$d с. Натиснете бутон, за да продължите.</string>
-    <string name="idle_stopped">Възпроизвеждането беше спряно, докато ви нямаше.</string>
     <string name="settings">Настройки</string>
     <string name="settings_device">Устройство</string>
     <string name="settings_uhd">4K (HEVC 10-bit)</string>

@@ -47,7 +47,6 @@ import java.io.IOException
 
 internal const val LIVE_LATENCY = 15_000L // typical HLS distance from real time
 internal const val ARCHIVE_DEPTH = 7L * 24 * 60 * 60_000L
-private const val IDLE_AFTER = 4L * 60 * 60_000L // same as the original
 private const val AUTO_RETRIES = 6 // 1+2+4+8+8+8 s of quiet retrying before an error shows
 
 /** What went wrong, resolved to text at display time. Server messages are already localized. */
@@ -83,7 +82,7 @@ internal class CatchupClock {
 
 /**
  * Everything a player screen does that isn't drawing: the ExoPlayer, the server session, what's
- * playing (channel, live or replay, paused), seeking, retries, tracks and the idle check. The
+ * playing (channel, live or replay, paused), seeking, retries and tracks. The
  * Modern and Classic layouts are two skins over one of these ([rememberPlayerController]).
  */
 @OptIn(UnstableApi::class)
@@ -143,9 +142,6 @@ class PlayerController internal constructor(
     var pictureMode by mutableIntStateOf(graph.session.pictureMode)
         private set
     private var favTick by mutableIntStateOf(0)
-    private var lastInput = SystemClock.elapsedRealtime()
-    var idleCountdown by mutableIntStateOf(0) // > 0 while asking "still watching?"
-        private set
     /** The channel watched before the current one (for "swap back"). */
     var previous by mutableStateOf<Channel?>(null)
         private set
@@ -191,16 +187,6 @@ class PlayerController internal constructor(
         if (fromTime != null) fromTime = clock.position()
         autoRetries = 0
         retry++
-    }
-
-    /** Records a key press; returns true if it only dismissed the "still watching?" question. */
-    fun onInput(): Boolean {
-        lastInput = SystemClock.elapsedRealtime()
-        if (idleCountdown > 0) {
-            idleCountdown = 0
-            return true
-        }
-        return false
     }
 
     /** Plays [i] of the current list, live or from [from]. */
@@ -417,26 +403,6 @@ class PlayerController internal constructor(
         }
     }
 
-    // "Still watching?" after 4 h without a key press; stops playback (and the server session) if unanswered.
-    internal suspend fun watchIdle() {
-        while (true) {
-            delay(60_000)
-            if (idleCountdown != 0 || error != null || SystemClock.elapsedRealtime() - lastInput < IDLE_AFTER) continue
-            idleCountdown = 60
-            while (idleCountdown > 1) {
-                delay(1_000)
-                if (idleCountdown == 0) break
-                idleCountdown--
-            }
-            if (idleCountdown > 0) {
-                idleCountdown = 0
-                player.stop()
-                session.end()
-                error = PlayError(R.string.idle_stopped)
-            }
-        }
-    }
-
     internal suspend fun refreshEpg() {
         while (true) {
             graph.epg.ensure()
@@ -471,7 +437,6 @@ fun rememberPlayerController(graph: AppGraph, channels: List<Channel>, startInde
     // Debounced seek: one reload per burst of Left/Right presses.
     LaunchedEffect(c.pendingSeek) { c.applySeekSoon() }
     LaunchedEffect(c.channel.id, c.fromTime) { c.saveResumePoints() }
-    LaunchedEffect(Unit) { c.watchIdle() }
     LaunchedEffect(Unit) { c.session.keepAlive() }
     LaunchedEffect(Unit) { c.refreshEpg() }
     return c

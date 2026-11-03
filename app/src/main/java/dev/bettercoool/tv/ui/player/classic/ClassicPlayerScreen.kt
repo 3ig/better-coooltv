@@ -60,7 +60,6 @@ import dev.bettercoool.tv.ui.common.digitFor
 import dev.bettercoool.tv.ui.common.minuteClock
 import dev.bettercoool.tv.ui.guide.Guide
 import dev.bettercoool.tv.ui.player.ChannelListOverlay
-import dev.bettercoool.tv.ui.player.IdleQuestion
 import dev.bettercoool.tv.ui.player.PlayerController
 import dev.bettercoool.tv.ui.player.PlayerStatus
 import dev.bettercoool.tv.ui.player.Subtitles
@@ -284,10 +283,7 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { e ->
-                if (e.type == KeyEventType.KeyDown) {
-                    if (c.onInput()) return@onPreviewKeyEvent true
-                    lastKey = System.nanoTime()
-                }
+                if (e.type == KeyEventType.KeyDown) lastKey = System.nanoTime()
                 // A long-press OK opened something (guide, menu). The rest of that press — further
                 // auto-repeats and the release — must not reach it: the guide plays on OK key-down.
                 if (okLongPressed && isOk(e.nativeKeyEvent.keyCode)) {
@@ -522,8 +518,6 @@ fun ClassicPlayerScreen(graph: AppGraph, channels: List<Channel>, startIndex: In
                 thumbnail = c::thumbnailUrl,
             )
         }
-
-        IdleQuestion(c)
     }
 }
 
