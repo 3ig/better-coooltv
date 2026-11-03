@@ -8,6 +8,11 @@ app's built-in updater shows the same notes.
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-11-03
+
+### Removed
+- The "Still watching?" question after 4 hours without a key press; playback now just continues.
+
 ## [0.3.1] - 2026-10-31
 
 ### Changed
@@ -64,7 +69,8 @@ First public release.
 - Selectable main colour (coool green, mint, sky, lavender, coral, amber, rose, silver).
 - In-app updates from GitHub Releases.
 
-[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/3ig/better-coooltv/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/3ig/better-coooltv/releases/tag/v0.3.2
 [0.3.1]: https://github.com/3ig/better-coooltv/releases/tag/v0.3.1
 [0.3.0]: https://github.com/3ig/better-coooltv/releases/tag/v0.3.0
 [0.2.3]: https://github.com/3ig/better-coooltv/releases/tag/v0.2.3
